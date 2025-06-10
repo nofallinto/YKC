@@ -1,0 +1,11 @@
+/Debug/
+/Application/
+/.settings
+/.launches
+/.config
+/.git
+/.cproject
+/.project
+/.ccproject
+/*.launch
+/.metadata

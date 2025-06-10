@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "boardsupport.h": "c",
+        "freertos.h": "c",
+        "main.h": "c"
+    }
+}

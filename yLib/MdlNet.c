@@ -259,12 +259,18 @@ BOOL RecvFromMqttServer(MQTT_COMM* pMqttComm)
 {
 	SocketFunction* pSocketFunc = pMqttComm->broker.pSocketFunc;
 	/* 读取解析长度字段 */
-	g_CodeTest.uVal[23] = pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0);
-	if(g_CodeTest.uVal[23] != 2) {	/* 最小包也有两字节 */
-		if(g_CodeTest.uVal[23] && g_CodeTest.u32Val[49] == 1){
-			g_CodeTest.u32Val[45]++;
+	if(pMqttComm->GprsNewAdd.bFlag) {	/* 读过报头了 */
+		pMqttComm->u8TRBuf[0] = pMqttComm->GprsNewAdd.u8Header;
+		pMqttComm->u8TRBuf[1] = pMqttComm->GprsNewAdd.u8LessLen;
+	} else {	/* 读取报头 */
+		g_CodeTest.i32Val[23] = pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0);
+		if(g_CodeTest.i32Val[23] != 2) {	/* 最小包也有两字节 */
+			if(g_CodeTest.uVal[23] && g_CodeTest.u32Val[49] == 1){
+				g_CodeTest.u32Val[45]++;
+			}
+			return FALSE;
 		}
-		return FALSE;
+//		g_CodeTest.i32Val[24] = pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0);
 	}
 
 	/* 继续读取直到MSB不为1, 或超过4位可变长度字段 */
@@ -311,23 +317,82 @@ BOOL WaitAndChkMqttEcho(MQTT_COMM* pMqttComm, uint16 uMsgId, uint8 MqttEchoType)
 | G/Out var 	:
 | Author		: Cui yehong				Date	:
 \=========================================================================*/
+/* 由于GPRS有Nagle, 导致发送PING包的时候只有两字节一直发不出去, 使用这个函数Pub一些没用的数据将PING包强行发送出去 */
+BOOL GPRS_PubTest(MQTT_COMM *pMqttComm)
+{
+	/* 本机信息发布:初始化 */
+	uint8* pTxBuf = pMqttComm->u8TRBuf + 5;	/* 固定头部预留，1Byte类型+2Byte总长度(最大长度16383)+2B Topic长度 */
+	uint8 u8QoS = 0;	/* 修改本次发布的QoS必须在这里进行，否则本段代码可能运行出错 */
+	/* 本机信息发布:打印Topic */
+	PrintStringNoOvChk(&pTxBuf, pMqttComm->broker.clientid);
+	PrintStringNoOvChk(&pTxBuf, "/DATA");
+	uint16 uMsgIDPt = pTxBuf - pMqttComm->u8TRBuf;
+	if(u8QoS) {
+		pTxBuf += 2;	/* 根据发布的消息QoS，预留MsgID部分, QoS=0无需，但保留该行代码以保持一致性 */
+	}
+	/* 本机信息发布:打印数据成Json格式 */
+	*pTxBuf++ = '{';					/* Json开始 */
+	PrintStringNoOvChk(&pTxBuf, "\"msg\":\"PING包填充数据\"");
+	*pTxBuf++ = '}';					/* Json结尾 */
+	/* 本机信息发布:传输 */
+	return PublishMqtt(pMqttComm, pTxBuf, uMsgIDPt, u8QoS);	/* QoS修改必须在本段代码开始的位置 */
+}
 BOOL PingMqttServer(MQTT_COMM *pMqttComm)
 {
 	pMqttComm->u8TRBuf[0] = MQTT_MSG_PINGREQ;
+	uint16 uRecvLen = 0;
 	pMqttComm->u8TRBuf[1] = 0x00;
 	SocketFunction* pSocketFunc = pMqttComm->broker.pSocketFunc;
-	if(pSocketFunc->Send(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0) == 2) {
-		if(pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0) == 2) {	/* 收到数据 */
-			if((pMqttComm->u8TRBuf[0] == MQTT_MSG_PINGRESP)) {				/* 确认是PINGRESP*/
+#if 1
+	/* 由于网络较慢, 发送ping包的时候可能正在接收服务器端的数据, 导致收到的响应并不是ping包的
+	 * 由于Nagle算法的原因, 只发送两字节M25会等到数据足够长时才会发送出去, 如果死等要等2s左右才能成功发送.
+	 * 因此这里的逻辑是如果读到的报头是0x30 即Pub的报文就置标志位bReadHeadFlag为TRUE后面使用RecvFromMqttServer接受数据时
+	 * 不需要接收报头了 */
+	if(pMqttComm->GprsNewAdd.bFlag) {	/* RecvFromMqttServer函数中没有收到PING包的响应 这里再读一次, 还没有就返回FALSE */
+		/* 这里再次接收ping包的响应, 但是有极小的概率这帧数据还不是ping包的响应, 这里暂且不考虑 */
+		if((uRecvLen = pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0)) == 2) {
+			if(pMqttComm->u8TRBuf[0] == MQTT_MSG_PINGRESP) {	/* PING包响应 */
+				pMqttComm->GprsNewAdd.bFlag = FALSE;
 				return TRUE;
-			} else {
-				g_CodeTest.i32Val[23]++;
+			} else {	/* 仍然是其他响应包, 这里仍然优先接收其他响应包, PING包不着急发, 因为Mqtt的保活时间只要完成一次通信就会重新计时 */
+				pMqttComm->GprsNewAdd.u8Header = pMqttComm->u8TRBuf[0];
+				pMqttComm->GprsNewAdd.u8LessLen = pMqttComm->u8TRBuf[1];
+				return TRUE;
 			}
-		} else {
-			g_CodeTest.i32Val[22]++;
+		}
+		pMqttComm->GprsNewAdd.bFlag = FALSE;
+		return FALSE;	/* 没收到响应或者没收到PING包的响应 */
+	}
+
+	if(((g_CodeTest.i32Val[2] = pSocketFunc->Send(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0)) == 2)
+		&& GPRS_PubTest(pMqttComm)) {	/* 发送PING包时发送一些没用的数据, 强行将PING包发送出去 */
+		if((uRecvLen = pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0)) == 2) {
+			if(pMqttComm->u8TRBuf[0] == MQTT_MSG_PINGRESP) {	/* Ping包响应 */
+				return TRUE;
+			} else  {	/* 其他响应头包 */
+				pMqttComm->GprsNewAdd.bFlag = TRUE;	/* 在RecvFromMqttServer函数中接收pub包时不用再接收报头了 */
+				pMqttComm->GprsNewAdd.u8Header = pMqttComm->u8TRBuf[0];
+				pMqttComm->GprsNewAdd.u8LessLen = pMqttComm->u8TRBuf[1];
+				return TRUE;
+			}
 		}
 	}
 	return FALSE;
+#else
+	/**/
+	if((g_CodeTest.i32Val[20] = pSocketFunc->Send(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0)) == 2) {
+		if((uRecvLen = pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0)) == 2) {	/* 收到数据 */
+			if((pMqttComm->u8TRBuf[0] == MQTT_MSG_PINGRESP)) {				/* 确认是PINGRESP*/
+				return TRUE;
+			} else {
+				g_CodeTest.i32Val[23] = 1;
+			}
+		} else {
+			g_CodeTest.i32Val[22] = 2;
+		}
+	}
+	return FALSE;
+#endif
 }
 
 /*==========================================================================
@@ -373,7 +438,7 @@ BOOL PublishMqtt(MQTT_COMM* pMqttComm, uint8* pTxBuf, uint16 uMsgIDPt, uint8 u8Q
 		pMqttComm->u8TRBuf[1] = u8MqttFirstByte;
 		pMqttComm->u8TRBuf[2] = uTotalLen;
 		uTotalLen += 2;
-		if(pSocketFunc->Send(pMqttComm->MqttSocket, &pMqttComm->u8TRBuf[1], uTotalLen, 0) != uTotalLen) {
+		if((g_CodeTest.i32Val[1] = pSocketFunc->Send(pMqttComm->MqttSocket, &pMqttComm->u8TRBuf[1], uTotalLen, 0)) != uTotalLen) {
 			return FALSE;
 		}
 	} else {
@@ -503,12 +568,17 @@ extern BOOL PubSampleData(MQTT_COMM* pMqttComm);
 extern BOOL PubYKFnXMS(MQTT_COMM* pMqttComm);
 extern BOOL PubBeiDouHub(MQTT_COMM* pMqttComm);
 /* 需要由调用者保证第一个参数不为NULL */
+extern BOOL GPRS_WaitSocketIdle(SOCKET SocketId, uint32 u32MaxNAcked, uint8 u8MaxStuckCnt, uint16 uTotalTimeoutMs);
+extern BOOL PubSpecialData(MQTT_COMM* pMqttComm);
 void MqttPubTask(void const * argument)
 {
 	uint8 u8MqttTaskNo = MQTT_TYPE_PUB;
 	MQTT_COMM* pMqttComm = &g_MqttComm[u8MqttTaskNo];
 
 	while(1) {
+//				while(1) {
+//					Task_sleep(10000);
+//				}
 		OFF_INDICATOR_SERVER;		/* 复位服务器指示 */
 		pMqttComm->u8Count_ConnTry = 0;
 		while(!OpenMqttSocketAndConnMqttServer(u8MqttTaskNo)) {
@@ -528,6 +598,7 @@ void MqttPubTask(void const * argument)
 				 if(QueryAndPubMqttConfResAndPage(pMqttComm)		/* 发布配置/同步消息 */
 				    && PubMsgAndAcq(pMqttComm))
 				 { } else {
+					 g_CodeTest.i32Val[0] = 1;
 					 break;
 				 }
 			} else {
@@ -548,11 +619,12 @@ void MqttPubTask(void const * argument)
 				#endif
 					&& PubSpecialData(pMqttComm))							/* 每个设备专有的数据 */
 				{ } else {
+					g_CodeTest.i32Val[0] = 2;
 					break;
 				}
 			}
-		} while(1);
-//		} while(PingMqttServer(pMqttComm));
+			Task_sleep(1000);
+		} while(PingMqttServer(pMqttComm));
 
 		/* 断开以待重连 */
 		mqtt_disconnect(&pMqttComm->broker);
@@ -663,6 +735,9 @@ void MqttSubTask(void const * argument)
 
 	/* 订阅端的主题 */
 	while(1) {
+//		while(1) {
+//			Task_sleep(10000);
+//		}
 		pMqttComm->u8Count_ConnTry = 0;
 		while(1) {
 			if(!OpenMqttSocketAndConnMqttServer((uint8)u32MqttTaskNo)) {
@@ -732,7 +807,7 @@ void MqttSubTask(void const * argument)
 			if((g_Sys.u32Seconds_LastSyncRTC == 0)
 				|| (labs(GetRTCSeconds() - g_Sys.u32Seconds_LastSyncRTC) > 12*3600UL))
 			{
-				SyncRealTimeBySNTP(pMqttComm);
+//				SyncRealTimeBySNTP(pMqttComm);
 			}
 
 			/* 检查参数是否发生变化 */
@@ -755,7 +830,9 @@ void MqttSubTask(void const * argument)
 			} else {
 				g_CodeTest.u32Val[21]++;
 				g_CodeTest.u32Val[49] = 1;
-				while(RecvFromMqttServer(pMqttComm) && (MQTTParseMessageType(pMqttComm->u8TRBuf) == MQTT_MSG_PUBLISH)) {
+				/* 这里用if 防止RecvFromMqttServer将PING包的响应读取了 */
+//				while(RecvFromMqttServer(pMqttComm) && (MQTTParseMessageType(pMqttComm->u8TRBuf) == MQTT_MSG_PUBLISH)) {
+				if(RecvFromMqttServer(pMqttComm) && (MQTTParseMessageType(pMqttComm->u8TRBuf) == MQTT_MSG_PUBLISH)) {
 					/* 消息解析:获得Topic, Msg的分段 */
 					uint16 uTopicLen = mqtt_parse_pub_topic_ptr(pMqttComm->u8TRBuf, (const uint8_t**)&pU8Topic);	/* 获得Topic起始指针和数据长度 */
 					pU8TopicEnd = pU8Topic + uTopicLen;
@@ -880,6 +957,7 @@ void MqttSubTask(void const * argument)
 					}
 				}
 				g_CodeTest.u32Val[49] = 0;
+				Task_sleep(2000);	/* 休眠一会给另一个线程一点机会 */
 #if SUPPORT_GPRS && SUPPORT_ETHERNET
 				if((GetCurrAccess() == INTERNET_ACCESS_GPRS) && CheckEthernet()) {
 					break;		/* 如果以太网连接恢复则断开GPRS(以太网优先) */

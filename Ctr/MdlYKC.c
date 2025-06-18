@@ -34,6 +34,8 @@
 ***************************************************************************/
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 /* 项目公共头文件 */
 #include "GlobalVar.h"
@@ -87,8 +89,8 @@ typedef enum {
 	CLN_ST_END				= 3,		/* 清洁完成 */
 	CLN_ST_JUMP				= 4,		/* 循环跳转 */
 
-	/* 以下为单独动作 */
 	CLN_ST_DRIVE			= 5,		/* 直线+旋转 */
+	/* 以下为单独动作 */
 	CLN_ST_JTURN			= 6,		/* J弯 (直角转弯) */
 	CLN_ST_CTURN			= 7,		/* S弯 (倒U型弯) */
 	/* 探索边沿，边沿传感器需要被不断触发 */
@@ -104,7 +106,7 @@ typedef enum {
 /* 由一个个单独动作编排出来的动作序列 */
 typedef struct {
 	WIN_CLN_STATE WinClnST;
-	int8 i8Angle;				/* 目标角度（0°为0点，-45°为9点，+45°为3点）仅限[-120°,120°] */
+	int8 i8Angle;				/* 目标角度（0°为0点，-45°为3点，+45°为9点）仅限[-120°,120°] */
 	int16 iForward;				/* 前进或者后退，限制见下文 */
 	int8 i8Spray;				/* 喷水，0不喷，1向前喷，-1向后喷 */
 	uint8	u8Rsvd;
@@ -172,6 +174,24 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 	{CLN_ST_DRIVE, 			45, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 38. 旋转45度 */
 	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 39. 前进J弯:减少角度 */
 	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 40. 结束清洁 */
+
+	/* 测试2 */
+	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_FRONT},	/* 41. 前进J弯:减少角度 */
+	{CLN_ST_DRIVE, 			0, 		1800,					SPRAY_INSTR_SPRAY_NONE},	/* 42. 前进 */
+	{CLN_ST_JTURN, 			60, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 43. 前进J弯:加大角度 */
+	{CLN_ST_DRIVE, 			0, 		-1800,					SPRAY_INSTR_SPRAY_NONE},	/* 44. 后退 */
+	{CLN_ST_CTURN, 			90, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 45. 前进S弯:减少角度 */
+	{CLN_ST_DRIVE, 			0, 		1800,					SPRAY_INSTR_SPRAY_NONE},	/* 46. 前进 */
+	{CLN_ST_CTURN, 			120, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 47. 前进S弯:加大角度 */
+	{CLN_ST_DRIVE, 			0, 		-1800,					SPRAY_INSTR_SPRAY_NONE},	/* 48. 后退 */
+	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 49. 结束清洁 */
+
+	/* 测试3 */
+	{CLN_ST_DRIVE, 			0, 		1800,					SPRAY_INSTR_SPRAY_NONE},	/* 50. 前进 */
+	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 51. 结束清洁 */
+
+	/* 测试4 */
+
 };
 #define CLN_SEQ_START_No		1
 #define CLN_SEQ_Z_BEGIN_No		11
@@ -180,6 +200,10 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 #define CLN_SEQ_TEST_No			38
 #define CLN_SEQ_TEST2_No		39
 #define CLN_SEQ_TEST3_No		40
+
+/* 调试用 */
+#define CLN_SEQ_TEST2_START_No	41
+#define CLN_SEQ_TEST3_START_No	50
 
 typedef struct {
 	/* 机器人位置，以启动位置为原点 */
@@ -239,6 +263,9 @@ YKC_CTR g_YKCCtr;
 #define CLIFF_DEACTIVE 	FALSE			/* 临时关闭悬崖开关（常为开） */
 #define PUMP_DEACTIVE	FALSE			/* 关闭真空泵 */
 #define LOW_AIR_P		TRUE			/* 允许低真空水平至2300Pa，而不是标准的2800Pa */
+#define DEBUG_PRINT_CLN_STATE	FALSE	/* 打印清污机状态 */
+#define LOW_AIR_CLOSE_CLN	FALSE		/* 低气压时停止擦窗机 */
+#define CLOSE_SPRAY_WATER	TRUE		/* 关闭喷水 */
 /* 测试用开关----------------------------------------*/
 
 /* 1000个履带轮脉冲，行走约37mm; 27脉冲/mm; 履带间距约230mm, 擦窗机为265mm*265mm正方形 */
@@ -266,6 +293,51 @@ void NextWinClnSTBySeq(uint8 u8NewSeqNo_0Auto);
 /***************************************************************************
  							functions definition
 ***************************************************************************/
+void GPRS_Test(void)
+{
+	/* GPRS测试 */
+	extern UART_HandleTypeDef huart4;
+	SOCKET SocketFd; /* 百度相关套接字 */
+	struct sockaddr_in Socket_Gprs; /* 测试用地址族 SOCKADDR_IN*/
+
+	/* GPRS连接变量 */
+	int8 i8S_Result, i8R_Result, i8C_Result_Close, i8C_Result_Connect = -1;
+	uint8 aU8GprsBuffer[500];
+
+	/* 连接百度测试 (1次) */
+	/* 百度ip地址定义 */
+#define BAIDU_IP "220.181.111.232"  		/* 百度的IP地址，注意有时可能会变化 */
+#define BAIDU_PORT 80  						/* 百度HTTP端口号 */
+	memset(&Socket_Gprs, 0, sizeof(Socket_Gprs));
+	Socket_Gprs.sin_family = AF_INET; /* 地址族采用ipv4通信 */
+	Socket_Gprs.sin_port = htons(80); /* 将端口号转为网络字节 */
+	Socket_Gprs.sin_addr.s_addr = htonl(0x279c420a); /* 将地址转为主机字节序，然后在转为网络字节序 */
+	SocketFd = GprsSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP);  /* 使用流式套接字类型 */
+
+	while(i8C_Result_Connect != GPRS_SUC) { /* 重复连接保证连接上 */
+		i8C_Result_Connect = GprsConnect(SocketFd, &Socket_Gprs, sizeof(Socket_Gprs));
+	}
+
+	sprintf((uint8*)aU8GprsBuffer, "GET /?st=1 HTTP/1.1\r\nHost:www.baidu.com\r\n\r\n");
+	i8S_Result = GprsSend(SocketFd, aU8GprsBuffer, strlen(aU8GprsBuffer), 0);
+	while(i8S_Result > 0) { 	/* 当成功发送命令后，进行接收(注意要循环接收，网页发送信息不会一次发完) */
+		i8R_Result = GprsRecv(SocketFd, aU8GprsBuffer, sizeof(aU8GprsBuffer), 0);
+		if(i8R_Result > 0) { /* 成功接收到数据 */
+//			sprintf(aU8GprsBuffer, "receive:%d byte\r\n", i8R_Result);
+			printf("收到了%d 字节\n", i8R_Result);
+			/* 将接收到的回复发送到串口中，方便调试 */
+			HAL_UART_Transmit(&huart4, (const uint8 *)aU8GprsBuffer, i8R_Result, 500);
+
+			/* 测试完将连接关闭 */
+			i8C_Result_Close = GprsClose(SocketFd);
+			if(i8C_Result_Close == GPRS_SUC) { /* 关闭成功 */
+				sprintf(aU8GprsBuffer, "finish closed\r\n");
+				HAL_UART_Transmit(&huart4, (const uint8 *)aU8GprsBuffer, strlen(aU8GprsBuffer), 500);
+			}
+			break;
+		}
+	}
+}
 /*==========================================================================
 | Description	: 
 | In/Out/G var	:
@@ -313,7 +385,9 @@ void InitMdlCtr(void)		/* rename from InitYKC() */
 		configASSERT(FALSE);
 	}
 
-	/* 初始化红外遥控器  TIM5频率1MHz, ARR==65535*/
+//    GPRS_Test();
+
+	/* 初始化红外遥控器  TIM5频率1MHz, ARR==65535 */
 	extern TIM_HandleTypeDef htim5;
 	HAL_TIM_Base_Start_IT(&htim5);	 			/* 启动定时器中断，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
 	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_2);  /* 启动定时器输入捕获，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
@@ -366,8 +440,87 @@ BOOL IsMeetWheelStallCur(float32 fCurrent)
 //	} else {
 //		return fCurrent > 1.0f;
 //	}
+#if USE_SELF_DEVELOP_MOTOR
+	return fCurrent > 1.5f;
+#else
 	return fCurrent > 0.5f;
+#endif
 }
+BOOL WinClnSectionHang(void);
+BOOL WinClnCompleteHang(void);
+void WinClnDebug(void);
+/* 判断擦窗机是否部分悬空 即：至少有一个悬空 */
+BOOL WinClnSectionHang(void)
+{
+	return (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
+										|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
+										|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
+										|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]);
+}
+
+/* 判断擦窗机是否完全悬空 即：四个角全部悬空 */
+BOOL WinClnCompleteHang(void)
+{
+	return (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
+										&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
+										&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
+										&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]);
+}
+/* Debug 调试信息 */
+#if DEBUG_PRINT_CLN_STATE
+#include <stdio.h>
+#define DEBUG_PRINTF_FREQUENCY_10MS			100		/* Debug信息打印频率 单位10ms */
+void WinClnDebug(void)
+{
+	static int i32DebugCnt = DEBUG_PRINTF_FREQUENCY_10MS;
+	static int i32Cnt = 1;
+	if(i32DebugCnt--) {
+		return ;
+	} else {
+		i32DebugCnt = DEBUG_PRINTF_FREQUENCY_10MS;
+	}
+	const char *aChWinClnSTStr[] = {
+			"空闲",
+			"暂停",
+			"悬空",
+			"清洁完成",
+			"循环跳转",
+			"直线+旋转",
+			"J弯(指教转弯)",
+			"S弯(倒U型弯)",
+			"前进探索左边沿",
+			"前进探索右边沿",
+			"后退探索左边沿",
+			"后退探索右边沿",
+			"空白"
+	};
+	const char *aChWinClnDinStr[] = {
+			"开关按下",
+			"水箱有水",
+			"侧左前碰撞",
+			"侧左后碰撞",
+			"侧右前碰撞",
+			"侧右后碰撞",
+			"前左碰撞",
+			"前右碰撞",
+			"后左碰撞",
+			"后右碰撞",
+			"前左悬空",
+			"前右悬空",
+			"后左悬空",
+			"后右悬空"
+	};
+	printf("擦窗机运动状态: %s 角度: %.2f 目标角度: %.2f cnt = %d\n", aChWinClnSTStr[g_YKCCtr.WinClnST], g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle, i32Cnt++);
+	/* 打印开出状态 */
+	printf("擦窗机碰撞悬空状态: ");
+	for(int i = 0; i <= CLIFF_REAR_RIGHT_DInNo; i++) {
+		if(g_YKCCtr.uTimer_DInSig_10ms[i]) {
+			printf("%s ", aChWinClnDinStr[i]);
+		}
+	}
+	printf("\n\n\n");
+}
+#endif
 
 void RunMdlCtr(void)		/* rename from RunYKC */
 {
@@ -439,9 +592,9 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	
 	/* 开入定时：悬崖开关，释放认为是信号 */
 	for(i = MAX_DIN_NUM - 1; i > HIT_REAR_RIGHT_DInNo; i--) {
-		if(g_Ctr.u32DinDat & (1<<i)) {
+		if(g_Ctr.u32DinDat & (1<<i)) {		/* 悬崖开关处于压缩状态 */
 			g_YKCCtr.uTimer_DInSig_10ms[i] = 0;
-		} else if(g_YKCCtr.uTimer_DInSig_10ms[i] < 0xFFFF) {
+		} else if(g_YKCCtr.uTimer_DInSig_10ms[i] < 0xFFFF) {	/* 悬崖开关处于释放状态 */
 			g_YKCCtr.uTimer_DInSig_10ms[i]++;
 		}
 	}
@@ -453,6 +606,9 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			g_YKCCtr.uTimer_DInSig_10ms[i]++;
 		}
 	}
+#if DEBUG_PRINT_CLN_STATE
+	WinClnDebug();
+#endif
 #define SINGLE_SIG_VALID_TIME_10ms 20
 
 	/* 刷新行程 */
@@ -531,6 +687,10 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		}
 	}
 
+	if(WinClnCompleteHang() && g_YKCCtr.WinClnST > CLN_ST_END) {	/* 擦窗机完全悬空 可能意外掉落 */
+		g_YKCCtr.WinClnST = CLN_ST_IDLE;
+	}
+
 	/* 运动决策 */
 	switch(g_YKCCtr.WinClnST) {
 		case CLN_ST_IDLE:			/* 空闲:真空泵断电 */
@@ -553,23 +713,24 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		case CLN_ST_HANG:			/* 悬空:真空泵上电，但是还没有贴到窗台上 */
 			ControlLed(LED_COLOR_RED);
 			if((g_YKCCtr.uTimer_DInSig_10ms[START_STOP_CMD_DInNo] == 0) && (g_YKCCtr.u8Tmr_PumpFullSpeed_10ms == 0)) { 		/* 放开开关按钮 */
-				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
-					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
-					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo])
-				{
+//				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
+//					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
+//					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
+//					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo])
+				if(WinClnSectionHang()) {		/* 至少有一个脚悬空就继续等待 */
 					TtsSpeak(VOICE_CLIFF_DETECTED, FALSE);
 				} else {
-					NextWinClnSTBySeq(CLN_SEQ_START_No);
+//					NextWinClnSTBySeq(CLN_SEQ_START_No);
+					NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_R2L_No);
 				}
 			}
 			break;
 		
-		case CLN_ST_JUMP:
+		case CLN_ST_JUMP:		/* 循环跳转 */
 			NextWinClnSTBySeq(g_YKCCtr.u8ClnSeqNo + cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward);
 			break;
 
-		case CLN_ST_BLANK:
+		case CLN_ST_BLANK:		/* 空白 */
 			ControlLed(LED_COLOR_CRAN);
 			NextWinClnSTBySeq(0);
 			break;
@@ -578,10 +739,10 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			//NextWinClnSTBySeq(CLN_SEQ_TEST_No);
 			break;
 
-		case CLN_ST_DRIVE:
+		case CLN_ST_DRIVE:		/* 直线+旋转 */
 			ControlLed(LED_COLOR_CRAN);
 			if(((g_YKCCtr.i32Forward == 0) && (g_YKCCtr.fAimedAngle == g_YKCCtr.fAngle))
-				|| ((g_YKCCtr.i32Forward > 0) 
+				|| ((g_YKCCtr.i32Forward > 0)
 					&& ((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 						|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 						|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
@@ -604,7 +765,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			}
 			break;
 
-		case CLN_ST_JTURN:
+		case CLN_ST_JTURN:		/* J弯 (直角转弯) */
 			ControlLed(LED_COLOR_CRAN);
 			if((fabsf(g_YKCCtr.fAimedAngle - g_YKCCtr.fAngle) < 5)
 				|| ((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward > 0)
@@ -622,7 +783,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			}
 			break;
 
-		case CLN_ST_CTURN:
+		case CLN_ST_CTURN:		/* S弯 (倒U型弯) */
 			ControlLed(LED_COLOR_CRAN);
 			/* 到底了：前进的话，左前触碰到边沿；后退的话，左后触碰到边沿 */
 			if((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward > 0)
@@ -637,7 +798,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 				NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_L2R_No);
 			} else if(g_YKCCtr.fAimedAngle == g_YKCCtr.fAngle) {
 				NextWinClnSTBySeq(0);
-			} 
+			}
 			break;
 
 		case CLN_ST_EXP_FORWARD_L:	/* 靠左前行，左边需要被不断触发 */
@@ -704,17 +865,17 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
 					//|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 					//|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms))
-			{	
+			{
 				NextWinClnSTBySeq(0);
 			} else if(g_YKCCtr.WinClnST == CLN_ST_EXP_BACK_L) {/* 靠左退行，左边需要被不断触发 */
 				/* 左后碰到，朝右拐 */
-				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
+				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]	/* 左后悬空或者侧左后碰撞 */
 					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo])
 				{
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
 					g_YKCCtr.i32Forward = -1000;
 				/* 前部也没有碰到，再左拐 */
-				} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo] == 0)
+				} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo] == 0)	/* 左前不悬空并且侧左前不碰撞 */
 						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo] == 0))
 				{
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
@@ -923,24 +1084,30 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	if(g_IRCtrl.u8TryCnt) {
 		switch(g_IRCtrl.u8BtnPressing) {
 		case IR_BTN_0:
-			Board_DrvPump(0.1f);
+//			Board_DrvPump(0.1f);
+			NextWinClnSTBySeq(CLN_SEQ_START_No);
 			break;
 		case IR_BTN_1:
-			Board_DrvPump(0.3f);
+			NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_R2L_No);
+//			Board_DrvPump(0.3f);
 			break;
 		case IR_BTN_2:
-			Board_DrvPump(0.5f);
+//			Board_DrvPump(0.5f);
+			NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_L2R_No);
 			break;
 		case IR_BTN_3:
-			Board_DrvPump(1.0f);
+//			Board_DrvPump(1.0f);
+			NextWinClnSTBySeq(CLN_SEQ_TEST2_START_No);
 			break;
 		case IR_BTN_4:
+			NextWinClnSTBySeq(CLN_SEQ_TEST3_START_No);
 			break;
 		case IR_BTN_5:
 			break;
 		case IR_BTN_6:
 			break;
 		case IR_BTN_7:
+			NextWinClnSTBySeq(4);
 			break;
 		case IR_BTN_8:
 			g_YKCCtr.bDisableCliff = FALSE;
@@ -963,24 +1130,29 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			}
 			break;
 		case IR_BTN_UP:
-			g_YKCCtr.fLeftDuty = 1;
-			g_YKCCtr.fRightDuty = 1;
+			g_YKCCtr.fLeftDuty = 0.6f;
+			g_YKCCtr.fRightDuty = 0.6f;
 			break;
 		case IR_BTN_DOWN:
 			g_YKCCtr.fLeftDuty = -1;
 			g_YKCCtr.fRightDuty = -1;
 			break;
 		case IR_BTN_LEFT:
-			g_YKCCtr.fLeftDuty = 1;
-			g_YKCCtr.fRightDuty = -1;
-			break;
-		case IR_BTN_RIGHT:
+//			g_YKCCtr.fLeftDuty = 1;
+//			g_YKCCtr.fRightDuty = -1;
 			g_YKCCtr.fLeftDuty = -1;
 			g_YKCCtr.fRightDuty = 1;
+			break;
+		case IR_BTN_RIGHT:
+//			g_YKCCtr.fLeftDuty = -1;
+//			g_YKCCtr.fRightDuty = 1;
+			g_YKCCtr.fLeftDuty = 1;
+			g_YKCCtr.fRightDuty = -1;
 			break;
 		case IR_BTN_OK:
 			g_YKCCtr.fLeftDuty = 0;
 			g_YKCCtr.fRightDuty = 0;
+			g_YKCCtr.WinClnST = CLN_ST_IDLE;
 			break;
 		}
 	}
@@ -1019,7 +1191,22 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	/* 真空泵 */
 	float32 fPumpPID_P, fPumpPID_I;
 	if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
-		g_YKCCtr.fPumpDuty = PUMP_IDEL_DUTY;
+		if(g_IRCtrl.u8TryCnt) {
+			if(g_IRCtrl.u8BtnPressing == IR_BTN_5) {
+				g_YKCCtr.fPumpDuty += 0.1f;
+				if(g_YKCCtr.fPumpDuty > 1.0f) {
+					g_YKCCtr.fPumpDuty = 1.0f;
+				}
+				g_IRCtrl.u8TryCnt = 0;
+			} else if(g_IRCtrl.u8BtnPressing == IR_BTN_6) {
+				g_YKCCtr.fPumpDuty -= 0.1f;
+				g_IRCtrl.u8TryCnt = 0;
+			}
+		}
+//			else {
+//			g_YKCCtr.fPumpDuty = PUMP_IDEL_DUTY;
+//		}
+//		g_YKCCtr.fPumpDuty = PUMP_IDEL_DUTY;
 		g_YKCCtr.fAirPressure_PumpIdle = g_MsrRes.fAirPressure;
 	} else {
 		if(g_YKCCtr.fPumpDuty == 0) {	/* 刚启动 */
@@ -1041,8 +1228,10 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 					g_YKCCtr.u8Tmr_VacummSuff_10ms--;
 				} else {		/* 气压持续偏低 */
 					if(g_YKCCtr.WinClnST != CLN_ST_STOP) {
+					#if LOW_AIR_CLOSE_CLN
 						g_YKCCtr.WinClnST_beforeSTOP = g_YKCCtr.WinClnST;
 						g_YKCCtr.WinClnST = CLN_ST_STOP;
+					#endif
 					}
 					TtsSpeak(VOICE_AIR_PRES_LOW, FALSE);
 				}
@@ -1082,9 +1271,13 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		g_YKCCtr.i32TripCntForSpray -= ((abs(iLeftCount) + abs(iRightCount)) / 2);		/* 两轮步数均值 */
 		if((g_YKCCtr.u8ClnSeqNo != g_YKCCtr.u8ClnSeqNo_last) || (g_YKCCtr.i32TripCntForSpray <= 0)) {		/* 刚切换了脚本序号或累积到了一定步数 */
 			if(cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Spray == SPRAY_INSTR_SPRAY_FRONT) {
+#if !CLOSE_SPRAY_WATER
 				GPIO_write(TOP_WATER_JET_RelayNo, 1);
+#endif
 			} else if(cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Spray == SPRAY_INSTR_SPRAY_BACK) {
+#if !CLOSE_SPRAY_WATER
 				GPIO_write(BOT_WATER_JET_RelayNo, 1);
+#endif
 			}
 			if(g_YKCCtr.i8Tmr_Spray_Front_10ms == -1) {
 				g_YKCCtr.i8Tmr_Spray_Front_10ms = SPRAY_TIMEOUT_10ms;
@@ -1229,7 +1422,8 @@ __weak void GetAuthKey(AUTH_TYPE AuthType, uint32* pAuthKey)
 				*pAuthKey++ = 1;
 				*pAuthKey++ = 1;
 				break;
-
+			default:
+				break;
 		}
 	} else if(uAuthGrpNo == 1) {			/* 第1组密码 */
 		switch(AuthType) {
@@ -1270,7 +1464,8 @@ __weak void GetAuthKey(AUTH_TYPE AuthType, uint32* pAuthKey)
 				*pAuthKey++ = 1;
 				*pAuthKey++ = 1;
 				break;
-
+			default:
+				break;
 		}
 	}
 }

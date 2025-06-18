@@ -95,13 +95,14 @@ typedef enum {
 	GPRS_INVALID	= -2,
 	GPRS_COMM_FAIL	= -3,
 	GPRS_PIN_LOCK	= -4,
-	GPRS_ERROR 		= -5
+	GPRS_ERROR 		= -5,
+	GPRS_NO_INTERNET = -6,
 }GPRS_STATUS;
 
 //#define GPRS_SEND_TIMEOUT_s	5			/* 秒 */
 //#define GPRS_RECV_TIMEOUT_s	5			/* 秒 */
 
-#define GPRS_REQ_TIMEOUT_ms	5000			/* 毫秒 */
+#define GPRS_REQ_TIMEOUT_ms	10000			/* 毫秒 */
 
 typedef struct {
 	uint32				protocl;
@@ -120,6 +121,21 @@ typedef struct {
 	GPRS_SOCKET 				Socket[MAX_GPRS_SOCKET_NUM];
 }GPRS_COMM;
 EXT GPRS_COMM g_GprsComm;		/* 不能放Not_ZeroInit */
+
+/* 用于保存GPRS数据的环形缓冲区 */
+#define RING_BUFFER_MAX_SIZE		512			/* 环形缓冲区大小 */
+typedef struct {
+    uint8 aU8Buffer[RING_BUFFER_MAX_SIZE];    	/* 缓冲区指针 */
+    uint16 uHead;      /* 头指针 */
+    uint16 uRear;      /* 尾指针 */
+}RingBuffer_t;
+EXT RingBuffer_t g_GPRSRingBuffer;	/* GPRS的环形队列 */
+/* 环形缓冲区相关函数声明 */
+void RingBuffer_Init(RingBuffer_t *pRingBuffer);
+/* 往环形队列里写数据, 会覆盖旧数据 */
+void RingBuffer_Write(RingBuffer_t *pRingBuffer, const uint8 *cnst_pU8Data, uint16 uLen);
+/* 读取环形队列中所有数据 */
+uint16 RingBuffer_Read(RingBuffer_t *pRingBuffer, uint8 *pU8Data, uint16 uReadLen);
 
 EXT SOCKET GprsSocket(int32 i32Domain, int32 i32Type, int32 i32Protocl);
 EXT int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len);

@@ -129,15 +129,15 @@ void SysTask(void const * pArgs)
 	volatile int32 i;
 
 	InitSysMdl();
-//	if(((GetVerVar(GetVolatileFromU32Addr(&g_u32SoftVer))) == 9000)
-//			&& ((GetVerVar(GetVolatileFromU32Addr(GetCounterpartAddr(&g_u32SoftVer)))) == 9000))
-//	{
+	if(((GetVerVar(GetVolatileFromU32Addr(&g_u32SoftVer))) == 9000)
+			&& ((GetVerVar(GetVolatileFromU32Addr(GetCounterpartAddr(&g_u32SoftVer)))) == 9000))
+	{
 		g_PubSoftAuthCtr.uPubSoftUpdateCnt = 1000;		/* TODO：临时成为母版：升级运行软件计数器 */
 		g_PubSoftAuthCtr.uPubSoftInstallCnt = 1000;		/* TODO：临时成为母版：从测试软件到运行软件计数器 */
 		g_PubSoftAuthCtr.uPubSnCnt = 1000;				/* TODO：临时成为母版：发布SN计数器 */
 		g_PubSoftAuthCtr.uPubLicCnt = 1000;				/* TODO：临时成为母版：发布License计数器 */
-//	}
-	g_Sys.SerialNo.u32Dat = 11111111;
+	}
+	g_Sys.SerialNo.u32Dat = 99999999;
 	for(;;) {
     	ChkSoftIntegrity();
 		if(g_DataAcsIntf.bConfHaveUnsavedChange[SAVE_GRP_NUL]) {	/* 调试的时候，手动启动参数存储 */

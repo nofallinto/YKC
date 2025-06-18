@@ -54,6 +54,9 @@ extern "C" {
 #define MCU_FLASH_END						(0x08000000 + FLASH_HALF_BLEN*2 - 1)	/* stm32的flash截至地址宏不准(427有1m和2m两种)，所以需要自定义,YKC用的F103ZET6,1M内置flash */
 
 #define SRAM_ADDR_END						0x20010000UL			/* 10000 == 64KB, F103 */
+
+#define USE_SELF_DEVELOP_SHELL		TRUE			/* 使用自研外壳 */
+#define USE_SELF_DEVELOP_MOTOR		TRUE			/* 自研电机 */
 /*===========================================================================
  * 外设数量
  *==========================================================================*/

@@ -122,13 +122,13 @@ void MqttPubTask(void);
 osStaticThreadDef_t MqttSubTskCtlBlk;
 void MqttSubTask(void);
 
-/* 鐢�.s缈昏瘧鑷虫锛屾鍑芥暟閬垮厤浣跨敤鍏ㄥ眬鍙橀噺锛屽洜涓哄垵濮嬪寲鏃朵細鏀瑰彉浠栫殑鍊� */
+/* 閻拷.s缂堟槒鐦ч懛铏劃閿涘本顒濋崙鑺ユ殶闁灝鍘ゆ担璺ㄦ暏閸忋劌鐪崣姗�鍣洪敍灞芥礈娑撳搫鍨垫慨瀣閺冩湹绱伴弨鐟板綁娴犳牜娈戦崐锟� */
 void _c_int00(void)
 {
 	uint32 *pValInitSrc;
 	uint32 *pValInitDst;
 
-	extern unsigned int _sdata, _edata, _sidata, _sbss, _ebss;		/* 杩欎簺鍙橀噺鐨勫畾涔夊湪閾炬帴鑴氭湰閲� */
+	extern unsigned int _sdata, _edata, _sidata, _sbss, _ebss;		/* 鏉╂瑤绨洪崣姗�鍣洪惃鍕暰娑斿婀柧鐐复閼存碍婀伴柌锟� */
 
     /* Call the clock system initialization function. */
     SystemInit();
@@ -141,13 +141,13 @@ void _c_int00(void)
     }
 
     /* Zero fill the bss segment.(LoopFillZerobss) */
-    pValInitSrc = (uint32*)&_sbss;		/* _sbss蹇呴』鐢ㄦ爤閿佸瓨 */
+    pValInitSrc = (uint32*)&_sbss;		/* _sbss韫囧懘銆忛悽銊︾垽闁夸礁鐡� */
 	pValInitDst = (uint32*)&_ebss;
     while (pValInitSrc < pValInitDst) {
         *pValInitSrc++ = 0;
     }
 
-    /* ResetFunc();	TODO:鎶奣I鐨勬尓鍒癉rvTI */
+    /* ResetFunc();	TODO:閹跺ィI閻ㄥ嫭灏撻崚鐧塺vTI */
 
     /* Call static constructors */
     __libc_init_array();
@@ -156,6 +156,11 @@ void _c_int00(void)
     main();
 }
 
+int __io_putchar(int ch)
+{
+	HAL_UART_Transmit(g_UartComm[0].Handle, (uint8_t *)&ch, 1, 1000);
+	return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -165,16 +170,14 @@ void _c_int00(void)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-//  /* 鍚屾瀹氭椂鍣� */
+//  /* 閸氬本顒炵�规碍妞傞崳锟� */
 //  volatile uint32* pU32 = (uint32*)0xE0042008;
-//  *pU32 = 0x000F;   /* debug鏆傚仠CPU锛屽仠TIM2/3/4/5锛屼复鏃舵�х殑 */
+//  *pU32 = 0x000F;   /* debug閺嗗倸浠燙PU閿涘苯浠燭IM2/3/4/5閿涘奔澶嶉弮鑸碉拷褏娈� */
 //  pU32 = (uint32*)0xE004200C;
-//  *pU32 = 0x0003;   /* debug鏆傚仠CPU锛屽仠TIM1/8锛屼复鏃舵�х殑 */
-//  htim2.Instance->EGR = 1;  /* 鏈�浣庝綅UG缃负1锛岄噸缃鏁板櫒锛屼互渚垮疄鐜板畾鏃跺櫒鍚屾 */
+//  *pU32 = 0x0003;   /* debug閺嗗倸浠燙PU閿涘苯浠燭IM1/8閿涘奔澶嶉弮鑸碉拷褏娈� */
+//  htim2.Instance->EGR = 1;  /* 閺堬拷娴ｅ簼缍匲G缂冾喕璐�1閿涘矂鍣哥純顔款吀閺佹澘娅掗敍灞间簰娓氬灝鐤勯悳鏉跨暰閺冭泛娅掗崥灞绢劄 */
  	InitDebugDat();
-
  	g_CodeTest.i32Val[99] = SOFTWARE_VER;
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -209,7 +212,7 @@ int main(void)
   MX_IWDG_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  /* 鏇存柊鍚姩鐩稿叧鍙橀噺锛屽鏋滄槸鍐峰惎鍔�(RCC_CSR_PORRSTF)銆佸崌绾ф垨浜轰负杞欢閲嶅惎(RCC_CSR_PINRSTF|RCC_CSR_SFTRSTF)銆佽皟璇曠増鏈紝鍒欏皢閲嶅惎璁℃暟娓呴浂 */
+  /* 閺囧瓨鏌婇崥顖氬З閻╃鍙ч崣姗�鍣洪敍灞筋洤閺嬫粍妲搁崘宄版儙閸旓拷(RCC_CSR_PORRSTF)閵嗕礁宕岀痪褎鍨ㄦ禍杞拌礋鏉烆垯娆㈤柌宥呮儙(RCC_CSR_PINRSTF|RCC_CSR_SFTRSTF)閵嗕浇鐨熺拠鏇犲閺堫剨绱濋崚娆忕殺闁插秴鎯庣拋鈩冩殶濞撳懘娴� */
   #if (DEVICE_TYPE == YKC)
   if((RCC->CSR & RCC_CSR_PORRSTF) || CheckDebugVersion()) {
 	  g_Sys.uRstCount = 0;
@@ -226,16 +229,16 @@ int main(void)
 	  }
 	}
   #endif
-  RCC->CSR = RCC_CSR_RMVF;  	/* 鍚姩鍘熷洜瀵勫瓨鍣ㄥ浣� */
+  RCC->CSR = RCC_CSR_RMVF;  	/* 閸氼垰濮╅崢鐔锋礈鐎靛嫬鐡ㄩ崳銊ヮ槻娴ｏ拷 */
   g_Sys.u32RstTimer_s = 0;
   g_Sys.uTmr_1Hz = 1000;
 
-  /* 鍒濆鍖栧叧閿彉閲� */
+  /* 閸掓繂顫愰崠鏍у彠闁款喖褰夐柌锟� */
 	g_Sys.bCtrMdlOK = FALSE;
 	g_Sys.tReboot_0Null_nUrgent_pWaitIdle = 0;
 	g_Sys.u8Tmr_RstExtNet_tick = 0;
 	g_Sys.u32Seconds_LastSyncRTC = 0;
-	g_Sys.iTimer_nSoftChkWaitTick_pErrCode = -600;    /* 杩囦竴鍒嗛挓鍐嶅仛鍒ゆ柇--SysTask璋冪敤棰戠巼鏄�10Hz锛屽氨绠椾笉鍑嗭紝鍏崇郴涔熶笉澶� */
+	g_Sys.iTimer_nSoftChkWaitTick_pErrCode = -600;    /* 鏉╁洣绔撮崚鍡涙寭閸愬秴浠涢崚銈嗘焽--SysTask鐠嬪啰鏁ゆ０鎴犲芳閺勶拷10Hz閿涘苯姘ㄧ粻妞剧瑝閸戝棴绱濋崗宕囬兇娑旂喍绗夋径锟� */
 
 	if(g_Sys.uRstCount == 0) {
 		InitDataWithZero((uint8*)(&g_DataAcsIntf), sizeof(g_DataAcsIntf));
@@ -268,38 +271,40 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   TaskCreate("SysTask", SysTask, NULL, osPriorityLow, 1, (uint8*)g_SysBlock.SysStackBuf, SYS_TASK_STACK_BLEN, &g_SysBlock.SysTaskCtlBlk);
 
-  /* 閫氳浠诲姟 */
+  /* 闁俺顔嗘禒璇插 */
   /* UART */
   InitUartComm();
 
   g_UartComm[0].Handle = &huart4;
   g_UartComm[0].Sem_TxCplt = SemCreate("Uart0TxCplt", 1, &g_UartBlock[0].TxSemCtlBlk);
   g_UartComm[0].Sem_RxGet = SemCreate("Uart0RxCplt", 1, &g_UartBlock[0].RxSemCtlBlk);
-//  TaskCreate("UartTask0", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[0].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[0].TaskCtlBlk);		此串口不用独立任务管理，而由调试需求负责管理
+//  TaskCreate("UartTask0", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[0].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[0].TaskCtlBlk);		姝や覆鍙ｄ笉鐢ㄧ嫭绔嬩换鍔＄鐞嗭紝鑰岀敱璋冭瘯闇�姹傝礋璐ｇ鐞�
 
   g_UartComm[1].Handle = &huart3;
   g_UartComm[1].Sem_TxCplt = SemCreate("Uart1TxCplt", 1, &g_UartBlock[1].TxSemCtlBlk);
   g_UartComm[1].Sem_RxGet = SemCreate("Uart1RxCplt", 1, &g_UartBlock[1].RxSemCtlBlk);
-//  TaskCreate("UartTask1", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[1].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[1].TaskCtlBlk);		此串口不用独立任务管理，而由TTS语音模块功能负责管理
+//  TaskCreate("UartTask1", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[1].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[1].TaskCtlBlk);		姝や覆鍙ｄ笉鐢ㄧ嫭绔嬩换鍔＄鐞嗭紝鑰岀敱TTS璇煶妯″潡鍔熻兘璐熻矗绠＄悊
 
   g_UartComm[2].Handle = &huart1;
   g_UartComm[2].Sem_TxCplt = SemCreate("Uart2TxCplt", 1, &g_UartBlock[2].TxSemCtlBlk);
   g_UartComm[2].Sem_RxGet = SemCreate("Uart2RxCplt", 1, &g_UartBlock[2].RxSemCtlBlk);
-//  TaskCreate("UartTask2", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[2].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[2].TaskCtlBlk);		此串口不用独立任务管理，而由GPRS功能负责管理
+  g_UartComm[2].uRxBufPt = 0;
+  g_UartComm[2].uRxFrameIndex = 0;
+//  TaskCreate("UartTask2", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[2].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[2].TaskCtlBlk);		姝や覆鍙ｄ笉鐢ㄧ嫭绔嬩换鍔＄鐞嗭紝鑰岀敱GPRS鍔熻兘璐熻矗绠＄悊
 
   /* SPI */
   g_SPIComm[0].Handle = &hspi1;
-  //Sem_TxCplt鍦∣penSPI瑁�
+  //Sem_TxCplt閸︹垼penSPI鐟侊拷
   
-  /* 鎺у埗浠诲姟 */
+  /* 閹貉冨煑娴犺濮� */
   g_SysBlock.SEM_Ctr = SemCreate("CtrRun", 1, &g_SysBlock.RunSemCtlBlk);
   TaskCreate("CtrTask", CtrTask, NULL, osPriorityRealtime, 1, (uint8*)g_SysBlock.CtrStackBuf, CTR_TASK_STACK_BLEN, &g_SysBlock.CtrTaskCtlBlk);
   
-  /* 瀛樺偍浠诲姟 */
+  /* 鐎涙ê鍋嶆禒璇插 */
   g_DataAccessBlock.Sem_Op = SemCreate("NvMemOp", 1, &g_DataAccessBlock.OpSemCtlBlk);
   g_DataAccessBlock.DataAcsTSK = TaskCreate("DataAcs", DataAccessTask, NULL, osPriorityRealtime, 1, g_DataAccessBlock.Stack, DATA_ACCESS_TASK_STACK_LEN, &g_DataAccessBlock.TaskCtlBlk);
 
-  /* 缃戠粶浠诲姟 */
+  /* 缂冩垹绮舵禒璇插 */
 #if SUPPORT_GPRS
   /* GPRS req */
   g_GprsComm.Sem_GprsReq = SemCreate("GprsReq", 1, &g_GprsComm.SemCtlBlk);
@@ -486,7 +491,7 @@ static void MX_IWDG_Init(void)
   /* USER CODE END IWDG_Init 0 */
 
   /* USER CODE BEGIN IWDG_Init 1 */
-	/* 鎸夐渶寮�鍚湅闂ㄧ嫍 */
+	/* 閹稿娓跺锟介崥顖滄箙闂傘劎瀚� */
 	if(SOFT_RELEASE1_DEBUG0 || (g_Sys.SerialNo.u32Dat >= 10000000UL)) {
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
@@ -633,12 +638,12 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM1_Init 2 */
-  /* 闇�瑕佽缃瓹CMR.CCxS(鍏佽鎹曟崏) ICxF(杩囨护鍣�) ICxPSC(鍒嗛鍣�) */
+  /* 闂囷拷鐟曚浇顔曠純鐡笴MR.CCxS(閸忎浇顔忛幑鏇熷磸) ICxF(鏉╁洦鎶ら崳锟�) ICxPSC(閸掑棝顣堕崳锟�) */
   htim1.Instance->CCMR1 = 0x0100;
   htim1.Instance->CCMR2 = 0x0101;
-  /* 闇�瑕佽缃瓹CER.CCxE CCxP(0浠ｈ〃涓婂崌娌�) */
+  /* 闂囷拷鐟曚浇顔曠純鐡笴ER.CCxE CCxP(0娴狅綀銆冩稉濠傚磳濞岋拷) */
   htim1.Instance->CCER = 0x1110;
-  /* 闇�瑕佽缃厑璁镐腑鏂� DIER.CCxE CCxP */
+  /* 闂囷拷鐟曚浇顔曠純顔煎帒鐠侀晲鑵戦弬锟� DIER.CCxE CCxP */
   htim1.Instance->DIER = 0x1C;
   HAL_TIM_Base_Start(&htim1);
   /* USER CODE END TIM1_Init 2 */
@@ -840,7 +845,7 @@ static void MX_TIM5_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM5_Init 2 */
-  //涓鸿妭鐪佷竴涓彉閲忥紝缁欑孩澶栧拰IMU鐨凾IM5鐨勬縺娲绘斁鍦ㄤ簡BoardSupport.c閲�
+  //娑撻缚濡惇浣风娑擃亜褰夐柌蹇ョ礉缂佹瑧瀛╂径鏍ф嫲IMU閻ㄥ嚲IM5閻ㄥ嫭绺哄ú缁樻杹閸︺劋绨oardSupport.c闁诧拷
   /* USER CODE END TIM5_Init 2 */
 
 }

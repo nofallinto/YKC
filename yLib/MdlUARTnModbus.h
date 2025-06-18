@@ -98,6 +98,7 @@ typedef struct {
 	uint16 uTmr_Run_ms;						/* 单次通讯任务定时器，使得通讯任务保持固定的频率 */
     uint16 uTime_RxMaxIntv_ms;				/* 帧内字节间最大间隔时间 */
 	uint16 uRxBufPt;
+	uint16 uRxFrameIndex;						/* 当一帧数据没接收完整时, DMA再次接收数据时会从这个索引处继续接受, 所以用完应该立马置0 */
 
 	/* 通讯Buf部分:32b对齐 */
 	uint8 u8TRBuf[UART_TR_BUF_BLEN];

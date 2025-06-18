@@ -65,6 +65,7 @@ const GPIO_PINCFG cnst_GpioPinCfg[] = {
     {GPIOE, GPIO_PIN_8},        //机器人软件开停机控制
     {GPIOD, GPIO_PIN_6},        //水泵管道水位检测
 
+#if USE_SELF_DEVELOP_SHELL
     {GPIOD, GPIO_PIN_3},        //左下碰撞开关
     {GPIOD, GPIO_PIN_4},        //左上碰撞开关
     {GPIOB, GPIO_PIN_0},        //右上碰撞开关
@@ -74,12 +75,21 @@ const GPIO_PINCFG cnst_GpioPinCfg[] = {
     {GPIOB, GPIO_PIN_1},        //前右碰撞开关
     {GPIOD, GPIO_PIN_5},        //前左碰撞开关
     {GPIOC, GPIO_PIN_4},		//右侧碰撞开关
-	
-    {GPIOA, GPIO_PIN_15},       //悬崖开关2 左上
-	{GPIOE, GPIO_PIN_7},        //悬崖开关3 右上
-	{GPIOE, GPIO_PIN_5},        //悬崖开关1 左下
-	{GPIOA, GPIO_PIN_3},        //悬崖开关4 右下
+#else
+	{GPIOD, GPIO_PIN_4},        //侧左前碰撞开关 3
+    {GPIOD, GPIO_PIN_3},        //侧左后碰撞开关 4
+	{GPIOC, GPIO_PIN_5},        //侧右前碰撞开关 5
+    {GPIOB, GPIO_PIN_0},        //侧右后碰撞开关 6
 
+	{GPIOD, GPIO_PIN_5},        //前左碰撞开关 7
+	{GPIOC, GPIO_PIN_4},		//前右碰撞开关 8
+    {GPIOD, GPIO_PIN_2},        //后左碰撞开关 9
+    {GPIOB, GPIO_PIN_1},        //后右碰撞开关 10
+#endif
+    {GPIOA, GPIO_PIN_15},       //悬崖开关2 左上 11
+	{GPIOE, GPIO_PIN_7},        //悬崖开关3 右上 12
+	{GPIOE, GPIO_PIN_5},        //悬崖开关1 左下 13
+	{GPIOA, GPIO_PIN_3},        //悬崖开关4 右下 14
     /* 继电器 */
     {GPIOD, GPIO_PIN_1}, 	      //左下水泵
     {GPIOC, GPIO_PIN_12},        //左上水泵

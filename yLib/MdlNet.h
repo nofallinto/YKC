@@ -79,6 +79,12 @@ typedef enum {
 #define MQTT_TASK_STACK 		2048			/* MQTT堆栈大小 */
 #define MQTT_TR_BUF_BLEN		2048			/* MQTT收发消息长度 */
 #define MQTT_TR_BASE64_BLEN		((MQTT_TR_BUF_BLEN - 128)*3/4)	/* MQTT以base64编码收发数据长度 */
+/* 为了GPRS单增的结构体： */
+typedef struct {
+	BOOL bFlag;		/* 是否需要滞后接收PING包的响应标志位 */
+	uint8 u8Header;	/* 其他类型的报头 */
+	uint8 u8LessLen;	/* 剩余长度 */
+}GPRS_MqttNewAdd;
 typedef struct {
 	uint32 u32SerialNo;
 	SOCKET MqttSocket;
@@ -92,6 +98,7 @@ typedef struct {
 	uint8 u8Count_ConnTry;		/* 连接尝试次数 */
 	BOOL bNeedReConn;
 	uint16 uRsvd;
+	GPRS_MqttNewAdd GprsNewAdd;			/* GPRS新增, 在PingMqttServer函数中有解释 */
 }MQTT_COMM;
 typedef enum {
 	MQTT_TYPE_PUB		= 0,

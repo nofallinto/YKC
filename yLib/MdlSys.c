@@ -129,15 +129,15 @@ void SysTask(void const * pArgs)
 	volatile int32 i;
 
 	InitSysMdl();
-	if(((GetVerVar(GetVolatileFromU32Addr(&g_u32SoftVer))) == 9000)
-			&& ((GetVerVar(GetVolatileFromU32Addr(GetCounterpartAddr(&g_u32SoftVer)))) == 9000))
-	{
+//	if(((GetVerVar(GetVolatileFromU32Addr(&g_u32SoftVer))) == 9000)
+//			&& ((GetVerVar(GetVolatileFromU32Addr(GetCounterpartAddr(&g_u32SoftVer)))) == 9000))
+//	{
 		g_PubSoftAuthCtr.uPubSoftUpdateCnt = 1000;		/* TODO：临时成为母版：升级运行软件计数器 */
 		g_PubSoftAuthCtr.uPubSoftInstallCnt = 1000;		/* TODO：临时成为母版：从测试软件到运行软件计数器 */
 		g_PubSoftAuthCtr.uPubSnCnt = 1000;				/* TODO：临时成为母版：发布SN计数器 */
 		g_PubSoftAuthCtr.uPubLicCnt = 1000;				/* TODO：临时成为母版：发布License计数器 */
-	}
-	g_Sys.SerialNo.u32Dat = 99999999;
+//	}
+	g_Sys.SerialNo.u32Dat = 11111111;
 	for(;;) {
     	ChkSoftIntegrity();
 		if(g_DataAcsIntf.bConfHaveUnsavedChange[SAVE_GRP_NUL]) {	/* 调试的时候，手动启动参数存储 */
@@ -527,6 +527,12 @@ void DrvSoftUpdateTick_1KHz(void)
 	if(g_Sys.uTmr_EraseFlash_DistPwr_ms) {
 		g_Sys.uTmr_EraseFlash_DistPwr_ms--;
 	}
+	if(g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uRecvPingRespCnt) {
+		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uRecvPingRespCnt--;
+	}
+	if(g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uRecvPingRespCnt) {
+		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uRecvPingRespCnt--;
+	}
 }
 
 BOOL ProcMqttUpdate(MQTT_COMM* pMqttComm, uint8* pU8Topic, uint8* pU8TopicEnd, uint8* pU8Msg, uint8* pU8MsgEnd)
@@ -789,6 +795,7 @@ BOOL UpdateSoft(uint32* pU32FlashPack, uint32 u32FlashPackBLen)
         Rec_DebugChn(0, u32FlashAddr);
         Rec_DebugChn(0, u32ReqSoftVer);
         Rec_DebugChn(0, u32SerialNo);
+        return FALSE;
 	}
 	return TRUE;
 }
@@ -863,7 +870,20 @@ uint32 PubSoftware(FLASH_REQ* pFlashReq, uint32* pU32FlashPack, uint32 u32MaxFla
 		pU32FlashPack[2 + u32FlashFragBLen/4] = SOFTWARE_VER;
 		pU32FlashPack[3 + u32FlashFragBLen/4] = FlashReq.u32FlashAddr;
 		memcpy(&pU32FlashPack[1], (const void*)(FlashReq.u32FlashAddr + (FlashReq.bWhichHalf_0Fst_1Sec==1)*FLASH_HALF_BLEN), u32FlashFragBLen);
+//		for(int i = 0; i < u32FlashFragBLen / 4; i++) {
+//			pU32FlashPack[1 + i] = 0x11111111;
+//		}
 		u32FlashFragBLen += 16;		/* 调整为FlashPackBLen，需要增加FlashPack包头、包尾部分4个uint32 */
+//		printf("\r\n\r\n【");
+//		uint8 *pU8Buffer = (uint8 *)pU32FlashPack;
+//		for(int i = 0; i < u32FlashFragBLen; i++) {
+//			printf("0x%x ", pU8Buffer[i]);
+//		}
+//		printf("】\r\n\r\n");
+//		HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)"\r\n\r\n【", 6, 300);
+//		HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)pU32FlashPack, u32FlashFragBLen, 1000);
+//		HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)"】\r\n\r\n", 6, 300);
+
 		EncryptWithAES((AUTH_TYPE)(AUTH_AES_FLASH_DATA + AUTH_TYPE_NUM*uPwdGrpNo), pU32FlashPack, u32FlashFragBLen, FlashReq.u32FlashAddr);
 
 //		UpdateSoft((uint32*)pU32FlashPack, 1440);

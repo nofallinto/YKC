@@ -117,10 +117,10 @@ TSK_Handle MqttPubTaskHandle;
 void NetTask(const void* argument);
 
 osStaticThreadDef_t MqttPubTskCtlBlk;
-void MqttPubTask(void);
+//void MqttPubTask(void);
 
 osStaticThreadDef_t MqttSubTskCtlBlk;
-void MqttSubTask(void);
+//void MqttSubTask(void);
 
 /* 閻拷.s缂堟槒鐦ч懛铏劃閿涘本顒濋崙鑺ユ殶闁灝鍘ゆ担璺ㄦ暏閸忋劌鐪崣姗�鍣洪敍灞芥礈娑撳搫鍨垫慨瀣閺冩湹绱伴弨鐟板綁娴犳牜娈戦崐锟� */
 void _c_int00(void)
@@ -179,7 +179,6 @@ int main(void)
  	InitDebugDat();
  	g_CodeTest.i32Val[99] = SOFTWARE_VER;
   /* USER CODE END 1 */
-
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -246,7 +245,8 @@ int main(void)
 		g_Sys.uTmr_EraseFlash_DistPwr_ms = 0;
 	}
   /* USER CODE END 2 */
-
+	// todo test
+//	memset(&g_MqttComm, 0, sizeof(g_MqttComm));
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
@@ -315,10 +315,13 @@ int main(void)
   SEM_MqttPubReq = SemCreate("MqttPubReq", 1, &MqttPubReqSemCtlBlk);
 
 //  /* MQTT sub task osPriorityBelowNormal*/
-  MqttSubTaskHandle = TaskCreate("MqttSub", MqttSubTask, NULL, osPriorityBelowNormal, 0, (uint8*)g_MqttComm[MQTT_TYPE_SUB].u32TaskStack, MQTT_TASK_STACK/4, &MqttSubTskCtlBlk);
+
+  MqttSubTaskHandle = TaskCreate("MqttSub", MqttSubTask, NULL, osPriorityBelowNormal,
+		  0, (uint8*)g_MqttComm[MQTT_TYPE_SUB].u32TaskStack, MQTT_TASK_STACK, &MqttSubTskCtlBlk);
 
   /* MQTT pub task */
-  MqttPubTaskHandle = TaskCreate("MqttPub", MqttPubTask, NULL, osPriorityLow, 0, (uint8*)g_MqttComm[MQTT_TYPE_PUB].u32TaskStack, MQTT_TASK_STACK/4, &MqttPubTskCtlBlk);
+  MqttPubTaskHandle = TaskCreate("MqttPub", MqttPubTask, NULL, osPriorityLow,
+		  0, (uint8*)g_MqttComm[MQTT_TYPE_PUB].u32TaskStack, MQTT_TASK_STACK, &MqttPubTskCtlBlk);
 
   /* USER CODE END RTOS_THREADS */
 

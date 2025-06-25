@@ -136,6 +136,8 @@ BOOL GPRS_SendATCmd(const char *cnst_pChCmd, const char *cnst_pChExpectResp, con
 					g_UartComm[GPRS_UART_PORT].uRxFrameIndex = uRxLen;
 				}
 			}
+		} else {
+			uRxLen += g_UartComm[GPRS_UART_PORT].uRxFrameIndex;
 		}
 	}
 	if(uRxBufLen != NULL) {
@@ -243,7 +245,9 @@ BOOL GPRS_TcpConf(void)
 /* 软件复位GPRS */
 BOOL GPRS_Reset(void)
 {
-	return GPRS_SendATCmd("AT+CFUN=0,1\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT);
+	BOOL bRes = GPRS_SendATCmd("AT+CFUN=0,1\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT);
+	Task_sleep(2000);
+	return bRes;
 }
 
 /* 获取TCP通信状态 */
@@ -270,49 +274,71 @@ BOOL GPRS_WaitSocketIdle(SOCKET SocketId, uint32 u32MaxNAcked, uint8 u8MaxStuckC
 	uint16 uAcked = 0;			/* 未发送出去的数据长度 */
 	uint16 uPreAcked = 0xFFFF;	/* 上次记录的未发送出去的数据长度 */
 	uint8 u8StuckCount = u8MaxStuckCnt;
-	BOOL bFlag = TRUE;			/* 是否已经发送过了 */
+//	BOOL bFlag = TRUE;			/* 是否已经发送过了 */
+	BOOL bRes = FALSE;
 	PrintString(&pBuff, pBuff + 12, "AT+QISACK=");
 	*pBuff++ = g_GprsComm.Socket[SocketId-1].u8MuxId + '0';
 	*pBuff++ = '\r';
 	*pBuff++ = '\0';
-	while(HAL_GetTick() - u32StartTime < uTotalTimeoutMs) {
-		if(!GPRS_SendATCmd(aChCmd, "+QISACK: ", "OK", &uRxLen, 4, 2000)) {	/* 响应失败, 可能模块异常. */
-			return FALSE;
-		}
-		/* 获取nAcked */
-		if(!(pBuff = SkipCharInString(pStart, pStart + uRxLen, ',', 2))) {	/* 定位到nAcked位置 */
-			return FALSE;
-		}
-		uAcked = ReadU32(&pBuff, pBuff + 5);
-		/* 判断是否可以发送下一帧数据 */
-		if(uAcked <= u32MaxNAcked) {
-			return TRUE;
-		}
-		/* 判断是否卡住了 */
-		if(uPreAcked == uAcked) {
-			/* 由于M25有Nagle算法, 可能最后几字节发不出去, 这里直接发布一些其他东西把发送缓冲区强制刷新一下 */
-			if(!u8StuckCount--) {
-				if(bFlag && uAcked < 10) {
-					if(g_MqttComm[0].MqttSocket == SocketId) {	/* 发布的套接字 */
-						PubSpecialData(&g_MqttComm[0]);
-					} else {		/* 订阅的套接字 */
-						PubSpecialData(&g_MqttComm[1]);
-					}
-					bFlag = FALSE;
-					u32StartTime = HAL_GetTick();	/* 重新计时 */
-					u8StuckCount = u8MaxStuckCnt;	/* 重新计数 */
-					continue;
-				}
-				return FALSE;
+	if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
+		while(HAL_GetTick() - u32StartTime < uTotalTimeoutMs) {
+			if(!GPRS_SendATCmd(aChCmd, "+QISACK: ", "OK", &uRxLen, 4, 2000)) {	/* 响应失败, 可能模块异常. */
+				break;
+			} else if(!(pBuff = SkipCharInString(pStart, pStart + uRxLen, ',', 2))) {	/* 定位到nAcked位置 */
+				break;
 			}
-		} else {
-			u8StuckCount = u8MaxStuckCnt;
-			uPreAcked = uAcked;
+			uAcked = ReadU32(&pBuff, pBuff + 5);
+			/* 判断是否可以发送下一帧数据 */
+			if(uAcked <= u32MaxNAcked) {
+				bRes = TRUE;
+				break;
+			} else if(uPreAcked == uAcked) {	/* 判断是否卡住了 */
+				/* 由于M25有Nagle算法, 可能最后几字节发不出去, 这里直接发布一些其他东西把发送缓冲区强制刷新一下 */
+				if(!u8StuckCount--) {	/* 卡住超时了 */
+//					if(bFlag && uAcked < 10) {
+//						if(g_MqttComm[0].MqttSocket == SocketId) {	/* 发布的套接字 */
+//							PubSpecialData(&g_MqttComm[0]);
+//						} else {		/* 订阅的套接字 */
+//							PubSpecialData(&g_MqttComm[1]);
+//						}
+//						bFlag = FALSE;
+//						u32StartTime = HAL_GetTick();	/* 重新计时 */
+//						u8StuckCount = u8MaxStuckCnt;	/* 重新计数 */
+//						continue;
+//					}
+					break;
+				}
+			} else {
+				u8StuckCount = u8MaxStuckCnt;
+				uPreAcked = uAcked;
+			}
+			Task_sleep(200);
 		}
-		Task_sleep(200);
+		Semaphore_post(g_GprsComm.Sem_GprsReq);
 	}
 	/* 超时退出 */
-	return FALSE;
+	return bRes;
+}
+/* 获取未发送的字节数 */
+uint16 GPRS_GetUnsentBLen(SOCKET SocketId)
+{
+	uint8 *pStart = g_UartComm[GPRS_UART_PORT].u8TRBuf;
+	uint16 uAcked = 0;			/* 未发送出去的数据长度 */
+	uint16 uRxLen = 0;			/* 接收的响应数据长度 */
+	char aChCmd[20];
+	uint8 *pBuff = (uint8 *)aChCmd;
+	PrintString(&pBuff, pBuff + 12, "AT+QISACK=");
+	*pBuff++ = g_GprsComm.Socket[SocketId-1].u8MuxId + '0';
+	*pBuff++ = '\r';
+	*pBuff++ = '\0';
+	if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
+		if(GPRS_SendATCmd(aChCmd, "+QISACK: ", "OK", &uRxLen, 1, 2000)
+			&& (pBuff = SkipCharInString(pStart, pStart + uRxLen, ',', 2))) {	/* 响应成功 */
+			uAcked = ReadU32(&pBuff, pBuff + 5);
+		}
+		Semaphore_post(g_GprsComm.Sem_GprsReq);
+	}
+	return uAcked;
 }
 
 BOOL CheckGprsStatus(void)
@@ -337,19 +363,28 @@ BOOL CheckGprsStatus(void)
 				pSocket->bIsFree = TRUE;
 				pSocket->u8MuxId = i;
 			}
-			GPRS_ClearBuffer();		/* 清空GPRS的接收缓冲区 */
+			GPRS_ClearBuffer();							/* 清空GPRS的接收缓冲区 */
 			OpenUartComm(0, 115200, 0, 10);				/* 调试串口 */
-			OpenUartComm(GPRS_UART_PORT, 9600, 0, 30);	/* 与GPRS通信串口 */
+			OpenUartComm(GPRS_UART_PORT, 115200, 0, 30);	/* 与GPRS通信串口 */
 
-			/* 测试通信是否正常, 不正常就复位模块 */
-			if(!GPRS_SendATCmd("AT\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT)) {
-				GPRS_Reset();	/* 复位模块 */
-				return FALSE;
-			}
-//			Task_sleep(1000);
+			GPRS_Reset();	/* 复位模块 */
 
 			/* 设置波特率，出厂时是自适应波特率 */
-			if(!GPRS_SetBaud(9600) && GPRS_Reset()) {
+			if(!GPRS_SetBaud(115200)) {
+				return FALSE;
+			}
+//			g_UartComm[GPRS_UART_PORT].u8TRBuf[0] = 'A';
+//			g_UartComm[GPRS_UART_PORT].u8TRBuf[1] = 'T';
+//			g_UartComm[GPRS_UART_PORT].u8TRBuf[2] = '\r';
+//			uint8 aU8Recv[20];
+//			uint16 uRxLen = 0;
+//			while(1) {
+//				WriteToUart(GPRS_UART_PORT, 3);
+//				HAL_UARTEx_ReceiveToIdle(g_UartComm[GPRS_UART_PORT].Handle, aU8Recv, 20, &uRxLen, 2000);
+//				Task_sleep(2000);
+//			}
+			/* 测试通信是否正常, 不正常就复位模块 */
+			if(!GPRS_SendATCmd("AT\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT)) {
 				return FALSE;
 			}
 //			Task_sleep(1000);
@@ -359,10 +394,9 @@ BOOL CheckGprsStatus(void)
 				|| !GPRS_SendATCmd("AT+QISDE=0\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT)	/* 关闭SEND指令数据回显，0不回显 */
 				|| !GPRS_SendATCmd("AT&W\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT)	/* 保存配置 */
 				|| !GPRS_SendATCmd("AT\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT)	/* 测试通信是否正常？ */
-				|| !GPRS_SendATCmd("AT+CFUN=1\r", "OK", NULL, NULL, 2, 5000)) {	/* 设置模块功能为全模式 0:最小功能模式, 1:全功能模式, 4:飞行模式 无卡会返回 +CPIN: NOT INSERTED */
+				|| !GPRS_SendATCmd("AT+CFUN=1\r", "OK", "SMS Ready", NULL, 5, 10000)) {	/* 设置模块功能为全模式 0:最小功能模式, 1:全功能模式, 4:飞行模式 无卡会返回 +CPIN: NOT INSERTED */
 				return FALSE;
 			}
-			Task_sleep(1000);
 
 			/* 获取卡状态 */
 			if(!GPRS_GetSIMCardState()) {
@@ -387,7 +421,7 @@ BOOL CheckGprsStatus(void)
 			g_GprsComm.GprsStatus = GPRS_NORMAL;
 			return TRUE;
 		}
-	} else if(g_GprsComm.GprsStatus == GPRS_NO_SIM && GPRS_Reset()) {	/* 找不到SIM卡, 可能是热插拔, 复位一下重新识别SIM卡 */
+	} else if(g_GprsComm.GprsStatus == GPRS_NO_SIM) {	/* 找不到SIM卡, 可能是热插拔, 复位一下重新识别SIM卡 */
 			g_GprsComm.GprsStatus = GPRS_NOT_INIT;
 			return FALSE;
 	} else if(g_GprsComm.GprsStatus == GPRS_NO_INTERNET) {	/* 无法上网 */
@@ -395,11 +429,10 @@ BOOL CheckGprsStatus(void)
 		if(GPRS_GetInternetState() && GPRS_OpenInternet() && GPRS_TcpConf()) {
 			g_GprsComm.GprsStatus = GPRS_NORMAL;
 			return TRUE;
-		} else if((GPRS_GetSigStrong() == 99) && GPRS_Reset()) {	/* 查看信号强度 */
+		} else if((GPRS_GetSigStrong() == 99)) {	/* 查看信号强度 */
 			g_GprsComm.GprsStatus = GPRS_NOT_INIT;
 			return FALSE;
 		} else if(!GPRS_SendATCmd("AT\r", "OK", NULL, NULL, 3, GPRS_UART_TIMEOUT)) {	/* 模块卡死了 */
-			GPRS_Reset();	/* 复位模块 */
 			g_GprsComm.GprsStatus = GPRS_NOT_INIT;
 			return FALSE;
 		}
@@ -434,17 +467,17 @@ SOCKET GprsSocket(int32 domain, int32 type, int32 protocl)
 int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len)
 {
 	int32 i32Result = 0;
+	GPRS_SOCKET* pSocket = &g_GprsComm.Socket[socketFd-1];
 	if((socketFd <= 0) || (!pName) || (!i32Len)) {
 		i32Result = GPRS_ERR_ARG;
 	} else {
-		GPRS_SOCKET* pSocket = &g_GprsComm.Socket[socketFd-1];
 		if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
 			/* 调试专用 */
-			if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
-				printf("《Pub connect：》\n");
-			} else {
-				printf("《Sub connect：》\n");
-			}
+//			if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
+//				printf("《Pub connect：》\n");
+//			} else {
+//				printf("《Sub connect：》\n");
+//			}
 			if((g_GprsComm.GprsStatus == GPRS_NORMAL) && (!pSocket->bIsFree)) {
 				/* 通过串口下发 */
 				UART_COMM* pUartComm = &g_UartComm[GPRS_UART_PORT];
@@ -474,7 +507,7 @@ int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len)
 				*pBuf++ = '\r';
 				WriteToUart(GPRS_UART_PORT, pBuf - pUartComm->u8TRBuf);
 				/* 从串口读取返回内容,300ms内先会收到OK，然后10秒内会受到CONNECT OK或CONNECT FAIL */
-				if(GPRS_SendATCmd(NULL, "CONNECT OK", "CONNECT", NULL, 2, 10000)) {	/* 查看响应 */
+				if(GPRS_SendATCmd(NULL, "CONNECT OK", "CONNECT", NULL, 2, 5000)) {	/* 查看响应 */
 					i32Result = GPRS_SUC;
 				} else {	/* 响应超时或发送的格式不对. */
 					i32Result = GPRS_ERR_CONNECTION_ABN;
@@ -488,12 +521,13 @@ int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len)
 			i32Result = GPRS_ERR_TIMEOUT;
 		}
 	}
+	pSocket->u8Res = i32Result;
 	return i32Result;
 }
 
 int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag)
 {
-#define MAX_ONCE_SEND_BLEN	1400
+#define MAX_ONCE_SEND_BLEN	1000
 	int32 i32Result = 0;
 	uint32 u32AllSentLen = 0;	/* 所有已经发送的字节数 */
 	uint32 u32AllSendLen = uSendBlen;	/* 一共要发送的字节数 */
@@ -502,12 +536,12 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 	} else {
 		GPRS_SOCKET* pSocket = &g_GprsComm.Socket[socketFd-1];
 		if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
-			/* 调试专用 */
-			if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
-				printf("《Pub Send：》\n");
-			} else {
-				printf("《Sub Send：》\n");
-			}
+//			/* 调试专用 */
+//			if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
+//				printf("《Pub Send：》\n");
+//			} else {
+//				printf("《Sub Send：》1111\n");
+//			}
 			if((g_GprsComm.GprsStatus == GPRS_NORMAL) && (!pSocket->bIsFree)) {
 				UART_COMM* pUartComm = &g_UartComm[GPRS_UART_PORT];
 				/* 模块最大支持MAX_ONCE_SEND_BLEN字节分次发送 */
@@ -531,23 +565,25 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 					PrintU32(&pBuf, pBuf + 12, uEverySendBlen, 0);
 					*pBuf++ = '\r';
 					*pBuf++ = '\0';
-//					WriteToUart(GPRS_UART_PORT, pBuf - pUartComm->u8TRBuf);
-					/* 接收 */
 					uint16 uSentLen = 0;
-//					for(; i32Result == 0; ) {		/* 循环防止被别的socket主动上报的内容乱入 */
-					/* 这个有时候发送并不回复'>'号, 不清楚什么原因因此这里最多发送两次 */
+					/* 这个有时候发送并不回复'>'号, 不清楚什么原因因此这里最多发送几次 */
 					if(GPRS_SendATCmd((char *)aU8Cmd, ">", NULL, &uReadNum, 3, 2000)) {	/* 响应成功 */
 						/* 开始发送数据 */
 						while(uSentLen < uEverySendBlen) {
 							uint16 uSendLen = (uEverySendBlen - uSentLen) < UART_TR_BUF_BLEN ? (uEverySendBlen - uSentLen) : UART_TR_BUF_BLEN;
-							memcpy(pUartComm->u8TRBuf, pSrcBuf + uSentLen, uSendLen);
+							memcpy(pUartComm->u8TRBuf, pSrcBuf + uSentLen + u32AllSentLen, uSendLen);
 							WriteToUart(GPRS_UART_PORT, uSendLen);
 							uSentLen += uSendLen;
 						}
-						if(GPRS_SendATCmd(NULL, "SEND OK", NULL, NULL, 1, 1000)) {	/* 发送成功 */
+						if(GPRS_SendATCmd(NULL, "SEND OK", NULL, NULL, 1, 2000)) {	/* 发送成功 */
 							u32AllSentLen += uEverySendBlen;
 						} else {	/* 发送失败 认为是断开连接 */
+//							if(GPRS_SendATCmd("\r", "SEND OK", NULL, NULL, 1, 5000)) {
+//								u32AllSentLen += uEverySendBlen;
+//								continue;
+//							}
 							i32Result = GPRS_ERR_CONNECTION_ABN;
+							pSocket->u8Res = GPRS_ERR_CONNECTION_ABN;
 							break;
 						}
 					} else if(uReadNum != 0){	/* 响应了其他消息 */
@@ -559,6 +595,7 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 								|| SkipStrInString(pUartComm->u8TRBuf, pUartComm->u8TRBuf + uReadNum, (uint8 *)"ERROR")) {
 							/* 未建立TCP连接 */
 							i32Result = GPRS_ERR_CONNECTION_ABN;
+							pSocket->u8Res = GPRS_ERR_CONNECTION_ABN;
 							break;
 						} else {	/* 不能解析的响应 */
 							i32Result = GPRS_ERR_PARSE;
@@ -570,6 +607,7 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 				}
 			} else {	/* GPRS没网或者socket不可用 */
 				i32Result = GPRS_ERR_CONNECTION_ABN;
+				pSocket->u8Res = GPRS_ERR_CONNECTION_ABN;
 			}
 			Semaphore_post(g_GprsComm.Sem_GprsReq);
 		} else {	/* 没拿到锁 */
@@ -656,31 +694,38 @@ int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Fl
 //		for(; u8EmptyRecvTryCnt > 0; u8EmptyRecvTryCnt--) {
 			if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
 				/* 调试专用 */
-				if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
-					printf("《Pub Recv：》\n");
-				} else {
-					printf("《Sub Recv：》\n");
-				}
+//				if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
+//					printf("《Pub Recv：》\n");
+//				} else {
+//					printf("《Sub Recv：》\n");
+//				}
 				if((g_GprsComm.GprsStatus == GPRS_NORMAL) && (!pSocket->bIsFree)) {	/* GPRS联网并且套接字可用 */
 					/* 先确定上次的数据已经全部发送, 而不是堆叠在M25的发送缓冲区中 */
-					if(!GPRS_WaitSocketIdle(socketFd, 0, 20, 10000)) {
-						Semaphore_post(g_GprsComm.Sem_GprsReq);
-						return GPRS_ERR_TIMEOUT;
-					}
+//					if(!GPRS_WaitSocketIdle(socketFd, 0, 20, 10000)) {
+//						Semaphore_post(g_GprsComm.Sem_GprsReq);
+//						return GPRS_ERR_TIMEOUT;
+//					}
 					/* 以MAX_READ_LEN为最大单次读取大小，循环读取全部长度内容 */
 					/* 以uart buf大小为单元循环查询读取M25缓存中全部长度数据（M25每socket最大缓存400K） */
 					UART_COMM* pUartComm = &g_UartComm[GPRS_UART_PORT];
-					char aChCmd[20];
-					uint8* pBuf = (uint8 *)aChCmd;
-					PrintString(&pBuf, pBuf + 20, "AT+QIRD=0,1,");
-					*pBuf++ = '0' + pSocket->u8MuxId;
-					*pBuf++ = ',';
-					PrintU32(&pBuf, pBuf+ 12, (i32ReadBLen > MAX_READ_LEN ? MAX_READ_LEN : i32ReadBLen), 0);
-					*pBuf++ = '\r';
-					*pBuf++ = '\0';
+					char aChCmd[30];
+//					uint8* pBuf = (uint8 *)aChCmd;
+//					PrintString(&pBuf, pBuf + 20, "AT+QIRD=0,1,");
+//					*pBuf++ = '0' + pSocket->u8MuxId;
+//					*pBuf++ = ',';
+//					PrintU32(&pBuf, pBuf+ 12, (i32ReadBLen > MAX_READ_LEN ? MAX_READ_LEN : i32ReadBLen), 0);
+//					*pBuf++ = '\r';
+//					*pBuf++ = '\0';
 					for(; i32ReadBLen > 0 && u8EmptyRecvTryCnt; ) {	/* 循环接收剩余字节 */
 #if 1
+						uint8* pBuf = (uint8 *)aChCmd;
 						uint16 uUartReadBLen = 0;
+						PrintString(&pBuf, pBuf + 20, "AT+QIRD=0,1,");
+						*pBuf++ = '0' + pSocket->u8MuxId;
+						*pBuf++ = ',';
+						PrintU32(&pBuf, pBuf+ 12, (i32ReadBLen > MAX_READ_LEN ? MAX_READ_LEN : i32ReadBLen), 0);
+						*pBuf++ = '\r';
+						*pBuf++ = '\0';
 						/* 接收响应, 读到OK认为读取一帧完成. */
 						pBuf = pUartComm->u8TRBuf;
 						if(GPRS_SendATCmd(aChCmd, "+QIRD:", "OK", &uUartReadBLen, 2, 2000)) {
@@ -715,8 +760,10 @@ int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Fl
 									break;
 								}
 							} else if(SkipStrInString(pUartComm->u8TRBuf, pUartComm->u8TRBuf + uUartReadBLen, (uint8 *)"CLOSE")
-									|| SkipStrInString(pUartComm->u8TRBuf, pUartComm->u8TRBuf + uUartReadBLen, (uint8 *)"ERROR")) {	/* 是否断开连接 */
+									|| SkipStrInString(pUartComm->u8TRBuf, pUartComm->u8TRBuf + uUartReadBLen, (uint8 *)"ERROR")
+									|| SkipStrInString(pUartComm->u8TRBuf, pUartComm->u8TRBuf + uUartReadBLen, (uint8 *)"+PDP DEACT")) {	/* 是否断开连接 */
 								i32Result = GPRS_ERR_CONNECTION_ABN;	/* 断开连接 */
+								pSocket->u8Res = GPRS_ERR_CONNECTION_ABN;
 								break;
 							} else {	/* 响应了其他未识别的消息, 标记为未识别吧 */
 								i32Result = GPRS_ERR_PARSE;
@@ -736,6 +783,7 @@ int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Fl
 					Semaphore_post(g_GprsComm.Sem_GprsReq);
 				} else {	/* GPRS没联网, 或套接字不可用 */
 					i32Result = GPRS_ERR_OFFLINE;
+					pSocket->u8Res = GPRS_ERR_CONNECTION_ABN;
 				}
 			} else {	/* 没拿到锁, 返回读超时 */
 				i32Result = GPRS_ERR_TIMEOUT;
@@ -825,11 +873,11 @@ int32 GprsClose(SOCKET socketFd)
 		GPRS_SOCKET* pSocket = &g_GprsComm.Socket[socketFd-1];
 		if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
 			/* 调试专用 */
-			if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
-				printf("《Pub Close：》\n");
-			} else {
-				printf("《Sub Close：》\n");
-			}
+//			if(socketFd == g_MqttComm[MQTT_TYPE_PUB].MqttSocket) {
+//				printf("《Pub Close：》\n");
+//			} else {
+//				printf("《Sub Close：》\n");
+//			}
 			if((g_GprsComm.GprsStatus == GPRS_NORMAL) && (!pSocket->bIsFree)) {
 				UART_COMM* pUartComm = &g_UartComm[GPRS_UART_PORT];
 				uint8* pBuf= pUartComm->u8TRBuf;
@@ -943,4 +991,34 @@ uint16 RingBuffer_Read(RingBuffer_t *pRingBuffer, uint8 *pU8Data, uint16 uReadLe
 		pRingBuffer->uHead = (pRingBuffer->uHead + 1) % RING_BUFFER_MAX_SIZE;
 	}
 	return uLen;
+}
+
+/* 去除掉没用的信息: +QIRDI: 这个信息还有可能包含在消息帧中并不是单独发送的, 所以还不能忽略掉, 在这里给他去除
+ * 注：这个函数专门服务于ReadFromUart通信中的GPRS, 内容是写死的, 并不通用 */
+uint16 StrRemoveHashData(uint8 *pSrc, uint16 uDataLen)
+{
+	uint8 *pStart = pSrc;
+	uint8 *pSrcEnd = pSrc + uDataLen;
+	uint8 *pEnd;
+	if(uDataLen < 15) {	/* 数据过短不可能存在+QIRDI:数据帧 */
+		return uDataLen;
+	}
+	while((pStart = SkipStrInString(pStart, pSrcEnd, (uint8 *)"+QIRDI:"))) {
+		/* 这帧数据中存在无用数据准备去除 */
+		if(!(pEnd = SkipStrInString(pStart, pSrcEnd, (uint8 *)"\r\n"))) {	/* 有+QIRDI:但是没找到\r\n, 就没办法确定结束位置, 只能返回不做处理了. */
+			return uDataLen;
+		}
+		pStart -= 9;	/* 移动到\r\n处 */
+		/* 覆盖掉的长度 */
+		uint16 uCoverLen = pEnd - pStart;
+		/* 开始拷贝 */
+		if(pSrcEnd - pEnd > 0) {
+
+		}
+		memcpy(pStart, pEnd, pSrcEnd - pEnd);
+		/* 更新数据 */
+		uDataLen -= uCoverLen;
+		pSrcEnd -= uCoverLen;
+	}
+	return uDataLen;
 }

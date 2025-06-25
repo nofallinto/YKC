@@ -123,7 +123,7 @@ typedef struct {
 EXT GPRS_COMM g_GprsComm;		/* 不能放Not_ZeroInit */
 
 /* 用于保存GPRS数据的环形缓冲区 */
-#define RING_BUFFER_MAX_SIZE		512			/* 环形缓冲区大小 */
+#define RING_BUFFER_MAX_SIZE		2048			/* 环形缓冲区大小 */
 typedef struct {
     uint8 aU8Buffer[RING_BUFFER_MAX_SIZE];    	/* 缓冲区指针 */
     uint16 uHead;      /* 头指针 */
@@ -136,6 +136,12 @@ void RingBuffer_Init(RingBuffer_t *pRingBuffer);
 void RingBuffer_Write(RingBuffer_t *pRingBuffer, const uint8 *cnst_pU8Data, uint16 uLen);
 /* 读取环形队列中所有数据 */
 uint16 RingBuffer_Read(RingBuffer_t *pRingBuffer, uint8 *pU8Data, uint16 uReadLen);
+BOOL GPRS_WaitSocketIdle(SOCKET SocketId, uint32 u32MaxNAcked, uint8 u8MaxStuckCnt, uint16 uTotalTimeoutMs);
+/* 获取未发送的字节数 */
+uint16 GPRS_GetUnsentBLen(SOCKET SocketId);
+/* 软件复位GPRS */
+BOOL GPRS_Reset(void);
+uint16 StrRemoveHashData(uint8 *pSrc, uint16 uDataLen);
 
 EXT SOCKET GprsSocket(int32 i32Domain, int32 i32Type, int32 i32Protocl);
 EXT int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len);

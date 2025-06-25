@@ -80,16 +80,20 @@ typedef enum {
 #define MQTT_TR_BUF_BLEN		2048			/* MQTT收发消息长度 */
 #define MQTT_TR_BASE64_BLEN		((MQTT_TR_BUF_BLEN - 128)*3/4)	/* MQTT以base64编码收发数据长度 */
 /* 为了GPRS单增的结构体： */
+//typedef struct {
+//	BOOL bFlag;		/* 是否需要滞后接收PING包的响应标志位 */
+//	uint8 u8Header;	/* 其他类型的报头 */
+//	uint8 u8LessLen;	/* 剩余长度 */
+//}GPRS_MqttNewAdd;
 typedef struct {
-	BOOL bFlag;		/* 是否需要滞后接收PING包的响应标志位 */
-	uint8 u8Header;	/* 其他类型的报头 */
-	uint8 u8LessLen;	/* 剩余长度 */
+	BOOL bSentPingFlag;		/* 已经发送过PING包标志位 */
+	uint16 uRecvPingRespCnt;	/* 接收PING包响应倒计时 */
 }GPRS_MqttNewAdd;
 typedef struct {
 	uint32 u32SerialNo;
 	SOCKET MqttSocket;
-	uint8 u8TRBuf[MQTT_TR_BUF_BLEN];			/* 由于Mqtt数据收发是串行进行，因此收发可以共用一个Buf */
 	uint32 u32TaskStack[MQTT_TASK_STACK/4];
+	uint8 u8TRBuf[MQTT_TR_BUF_BLEN];			/* 由于Mqtt数据收发是串行进行，因此收发可以共用一个Buf */
 	mqtt_broker_handle_t broker;
 	uint8 u8ServerNo;
 	/* 连接结果   ，发布的时候，u8ConnRes,u8DnsAndTcpConRes组合成一个16b的数据 */
@@ -105,6 +109,7 @@ typedef enum {
 	MQTT_TYPE_SUB,
 	MQTT_TASK_NUM					/* MQTT连接类型，支持两个发布、两个订阅任务，新建此结构是为避免在非必要暴露MdlNet的地方引用MdlNet.h */
 }MQTT_CONN_TYPE;
+//EXT MQTT_COMM SECTION(".NOT_ZeroInit") g_MqttComm[MQTT_TASK_NUM];
 EXT MQTT_COMM g_MqttComm[MQTT_TASK_NUM];
 
 #ifdef _MDL_NET_C_
@@ -144,6 +149,9 @@ EXT MQTT_COMM g_MqttComm[MQTT_TASK_NUM];
 ***************************************************************************/
 EXT void DrvNetTick_1KHz(void);
 
+
+void MqttPubTask(const void* argument);
+void MqttSubTask(const void* argument);
 
 /***************************************************************************
  					functions could be used as extern

@@ -199,7 +199,7 @@ typedef struct {
 
 #define MQTT_FLASH_PACK_ASCII_BLEN	((MQTT_TR_BUF_BLEN - 128)/2)
 #define REBOOT_BY_SOFT_UPDATE		0xAAAAAAAAUL
-#define MAX_FLASH_REQ_WAIT_TIME_ms	1000
+#define MAX_FLASH_REQ_WAIT_TIME_ms	5000
 EXT BOOL ProcMqttUpdate(MQTT_COMM* pMqttComm, uint8* pU8Topic, uint8* pU8TopicEnd, uint8* pU8Msg, uint8* pU8MsgEnd);
 EXT BOOL CreateFlashReq(FLASH_REQ* pFlashReq, uint32 u32MaxFlashPackBLen);
 EXT BOOL QueryAndPubFlashReq(MQTT_COMM* pMqttComm, BOOL bNeedWait);

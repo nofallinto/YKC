@@ -373,16 +373,7 @@ BOOL CheckGprsStatus(void)
 			if(!GPRS_SetBaud(115200)) {
 				return FALSE;
 			}
-//			g_UartComm[GPRS_UART_PORT].u8TRBuf[0] = 'A';
-//			g_UartComm[GPRS_UART_PORT].u8TRBuf[1] = 'T';
-//			g_UartComm[GPRS_UART_PORT].u8TRBuf[2] = '\r';
-//			uint8 aU8Recv[20];
-//			uint16 uRxLen = 0;
-//			while(1) {
-//				WriteToUart(GPRS_UART_PORT, 3);
-//				HAL_UARTEx_ReceiveToIdle(g_UartComm[GPRS_UART_PORT].Handle, aU8Recv, 20, &uRxLen, 2000);
-//				Task_sleep(2000);
-//			}
+
 			/* 测试通信是否正常, 不正常就复位模块 */
 			if(!GPRS_SendATCmd("AT\r", "OK", NULL, NULL, 2, GPRS_UART_TIMEOUT)) {
 				return FALSE;
@@ -767,6 +758,7 @@ int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Fl
 								break;
 							} else {	/* 响应了其他未识别的消息, 标记为未识别吧 */
 								i32Result = GPRS_ERR_PARSE;
+								pSocket->u8Res = GPRS_ERR_CONNECTION_ABN;
 								break;
 							}
 						} else {	/* 读超时,没有响应 */

@@ -68,7 +68,7 @@
 #define SOCKET_RCV_TIMEOUT_s		10				/* socket读取超时 */
 #define SOCKET_SND_TIMEOUT_s		5				/* socket发送超时 */
 #define MAX_MQTT_SERVER_NUM			3				/* Pub:s1~s3, Sub:s4~s6 */
-#define GPRS_MAX_SEND_LEN			0				/* GPRS发送缓冲区最大长度, 即发送缓冲区的长度大于这个就不要发送新东西了 */
+#define GPRS_MAX_SEND_LEN			2				/* GPRS发送缓冲区最大长度, 即发送缓冲区的长度大于这个就不要发送新东西了 */
 /***************************************************************************
  						global variables definition
 ***************************************************************************/
@@ -77,13 +77,19 @@
 /***************************************************************************
 						internal functions declaration
 ***************************************************************************/
-void SyncRealTimeBySNTP(MQTT_COMM* pMqttComm);
+BOOL SyncRealTimeBySNTP(MQTT_COMM* pMqttComm, const uint32 cnst_u32NTPSever);
 
 /***************************************************************************
  							functions definition
 ***************************************************************************/
 
-
+#define MAX_NTP_SERVER_NUM 4
+const uint32 cnst_u32NTPServers[MAX_NTP_SERVER_NUM] = {
+	0x78196C0B, 	/*120.25.108.11*/
+	0xCB6B0658,		/*203.107.6.88*/
+	0x7618EC2B,		/*118.24.236.43*/
+	0xB65C0C0B 		/*182.92.12.11*/
+};
 MQTT_COMM g_MqttComm[MQTT_TASK_NUM];
 
 
@@ -139,7 +145,7 @@ BOOL OpenMqttSocketAndConnMqttServer(uint8 u8MqttTaskNo)
 	*pTxBuf++ = 0;
 	int16 i, j;
 	uint8 u8DnsAndTcpConRes = 0;	/* b5~4,b3~2,b1~0:三个服务器dns+tcp连接情况--0未尝试,1dns失败,2dns成功tcp失败,3tcp成功 */
-	SocketFunction *pSocketFunc = NULL;
+	const SocketFunction *pSocketFunc = NULL;
 	for(j = 0; j < MAX_INTERNET_ACCESS_NUM; j++) {
 		pSocketFunc = &AllSocketFun[j];
 		uint8 u8DnsAndTcpConRes = 0;	/* b5~4,b3~2,b1~0:三个服务器dns+tcp连接情况--0未尝试,1dns失败,2dns成功tcp失败,3tcp成功 */
@@ -367,7 +373,6 @@ BOOL GPRS_PubTest(MQTT_COMM *pMqttComm)
 BOOL PingMqttServer(MQTT_COMM *pMqttComm)
 {
 	pMqttComm->u8TRBuf[0] = MQTT_MSG_PINGREQ;
-	uint16 uRecvLen = 0;
 	pMqttComm->u8TRBuf[1] = 0x00;
 	SocketFunction* pSocketFunc = pMqttComm->broker.pSocketFunc;
 #if 0
@@ -612,11 +617,7 @@ void MqttPubTask(const void* argument)
 		OFF_INDICATOR_SERVER;		/* 复位服务器指示 */
 		pMqttComm->u8Count_ConnTry = 0;
 		while(!OpenMqttSocketAndConnMqttServer(u8MqttTaskNo)) {
-			if(pMqttComm->u8Count_ConnTry++ > 5) {
-				g_GprsComm.GprsStatus = GPRS_NOT_INIT;
-				GPRS_Reset();
-				pMqttComm->u8Count_ConnTry = 0;
-			}
+			pMqttComm->u8Count_ConnTry++;
 			MQTT_CONN_FAIL_DEAL;
 		};
 		ON_INDICATOR_SERVER;		/* 成功连接服务器 */
@@ -661,8 +662,9 @@ void MqttPubTask(const void* argument)
 					break;
 				}
 			}
-			Task_sleep(1000);
+			Task_sleep(100);
 			RecvFromMqttServer(pMqttComm);
+//			GPRS_GetSigStrong();	/* 看一下信号强度 */
 		} while(PingMqttServer(pMqttComm));
 
 		/* 断开以待重连 */
@@ -780,11 +782,7 @@ void MqttSubTask(const void* argument)
 		pMqttComm->u8Count_ConnTry = 0;
 		while(1) {
 			if(!OpenMqttSocketAndConnMqttServer((uint8)u32MqttTaskNo)) {
-				if(pMqttComm->u8Count_ConnTry++ > 5) {
-					GPRS_Reset();
-					g_GprsComm.GprsStatus = GPRS_NOT_INIT;
-					pMqttComm->u8Count_ConnTry = 0;
-				}
+				pMqttComm->u8Count_ConnTry++;
 				MQTT_CONN_FAIL_DEAL;
 			} else {
 				/* 订阅通讯盒有关的主题(升级程序) */
@@ -850,7 +848,11 @@ void MqttSubTask(const void* argument)
 			if((g_Sys.u32Seconds_LastSyncRTC == 0)
 				|| (labs(GetRTCSeconds() - g_Sys.u32Seconds_LastSyncRTC) > 12*3600UL))
 			{
-//				SyncRealTimeBySNTP(pMqttComm);
+				for(uint16 i = 0; i < MAX_NTP_SERVER_NUM; i++) {
+					if(SyncRealTimeBySNTP(pMqttComm, cnst_u32NTPServers[i])) {
+						break;
+					}
+				}
 			}
 
 			/* 检查参数是否发生变化 */
@@ -875,7 +877,6 @@ void MqttSubTask(const void* argument)
 				g_CodeTest.u32Val[49] = 1;
 				/* 这里用if 防止RecvFromMqttServer将PING包的响应读取了 */
 				while(RecvFromMqttServer(pMqttComm) && (MQTTParseMessageType(pMqttComm->u8TRBuf) == MQTT_MSG_PUBLISH)) {
-//				if(RecvFromMqttServer(pMqttComm) && (MQTTParseMessageType(pMqttComm->u8TRBuf) == MQTT_MSG_PUBLISH)) {
 					/* 消息解析:获得Topic, Msg的分段 */
 					uint16 uTopicLen = mqtt_parse_pub_topic_ptr(pMqttComm->u8TRBuf, (const uint8_t**)&pU8Topic);	/* 获得Topic起始指针和数据长度 */
 					pU8TopicEnd = pU8Topic + uTopicLen;
@@ -999,7 +1000,7 @@ void MqttSubTask(const void* argument)
 				#endif
 					}
 				}
-				Task_sleep(1000);	/* 休眠一会给另一个线程一点机会 */
+				Task_sleep(500);	/* 休眠一会给另一个线程一点机会 */
 #if SUPPORT_GPRS && SUPPORT_ETHERNET
 				if((GetCurrAccess() == INTERNET_ACCESS_GPRS) && CheckEthernet()) {
 					break;		/* 如果以太网连接恢复则断开GPRS(以太网优先) */
@@ -1384,17 +1385,9 @@ typedef struct SNTPHeader {
     uint32 	transmitTS[2];
 } SNTPHeader;
 
-#define MAX_NTP_SERVER_NUM 4
-const uint32 cnst_u32NTPServers[MAX_NTP_SERVER_NUM] = {
-	0x78196C0B, 	/*120.25.108.11*/
-	0xCB6B0658,		/*203.107.6.88*/
-	0x7618EC2B,		/*118.24.236.43*/
-	0xB65C0C0B 		/*182.92.12.11*/
-};
-
 /* Sync system datetime from source, currentlly is SNTP,
  * will block until time synchronized from source or tried all known servers  */
-void SyncRealTimeBySNTP(MQTT_COMM* pMqttComm)
+BOOL SyncRealTimeBySNTP(MQTT_COMM* pMqttComm, const uint32 cnst_u32NTPSever)
 {
 	SocketFunction *pSocketFun = pMqttComm->broker.pSocketFunc;
 	int32 i32SocketSNTP;
@@ -1406,47 +1399,46 @@ void SyncRealTimeBySNTP(MQTT_COMM* pMqttComm)
 			&& (pSocketFun->SetSockopt(i32SocketSNTP, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) >= 0))
 		{
 			/* loop all NTP servers until we get a valid datetime*/
-			int16 i = 0;
-			for( ; i < MAX_NTP_SERVER_NUM; i++) {
-				struct sockaddr_in socket_address;
-				socket_address.sin_addr.s_addr = htonl(cnst_u32NTPServers[i]);
-				socket_address.sin_family = AF_INET;
-				socket_address.sin_port = htons(123);	/* fix 123 */
-				if(pSocketFun->Connect(i32SocketSNTP, (struct sockaddr*)&socket_address, sizeof(socket_address)) >= 0) {
-					/* Initialize the SNTP packet, setting version and mode = client */
-					SNTPHeader sntpPkt;
-					memset(&sntpPkt, 0, sizeof(SNTPHeader));
-					sntpPkt.flags = 4 /* SNTP_VERSION */ << 3;
-					sntpPkt.flags |= 3;//SNTP_MODE_CLIENT;
-					sntpPkt.transmitTS[0] = htonl(0);
+			struct sockaddr_in socket_address;
+			socket_address.sin_addr.s_addr = htonl(cnst_u32NTPSever);
+			socket_address.sin_family = AF_INET;
+			socket_address.sin_port = htons(123);	/* fix 123 */
+			if(pSocketFun->Connect(i32SocketSNTP, (struct sockaddr*)&socket_address, sizeof(socket_address)) >= 0) {
+				/* Initialize the SNTP packet, setting version and mode = client */
+				SNTPHeader sntpPkt;
+				memset(&sntpPkt, 0, sizeof(SNTPHeader));
+				sntpPkt.flags = 4 /* SNTP_VERSION */ << 3;
+				sntpPkt.flags |= 3;//SNTP_MODE_CLIENT;
+				sntpPkt.transmitTS[0] = htonl(0);
 
-					/* Send out our SNTP request to the current server */
-					if((pSocketFun->Send(i32SocketSNTP, (void *)&sntpPkt, sizeof(SNTPHeader), 0) == sizeof(SNTPHeader))
-						&& (pSocketFun->Recv(i32SocketSNTP, &sntpPkt, sizeof(SNTPHeader), MSG_WAITALL) == sizeof(SNTPHeader))
-						&& (sntpPkt.stratum != 0) && (sntpPkt.stratum != 16))	/* Check for errors in server response */
-					{
-						/* server's transmit time is what we want */
-						uint32 u32SNTPSeconds = TIME_NTP_TO_LOCAL(ntohl(sntpPkt.transmitTS[0]));
-						SetRTCSeconds(u32SNTPSeconds);
-				#if SUPPORT_V4_MASTER
-					#if(DEVICE_TYPE == V5_YYT3) || (DEVICE_TYPE == V5_YYT4)
-						if(labs(u32SNTPSeconds - g_GpsData.u32RTCSeconds) > 5)
-					#else
-						if(1)
-					#endif
-						{
-							REAL_TIME_VAR RealTime;
-							CalDateByRTCSeconds(u32SNTPSeconds, &RealTime);
-							SetYKFTimeByDate(RealTime.u8Year, RealTime.u8Month, RealTime.u8Day,
-											RealTime.u8Hour, RealTime.u8Minute, RealTime.u8Second);
-						}
+				/* Send out our SNTP request to the current server */
+				if((pSocketFun->Send(i32SocketSNTP, (void *)&sntpPkt, sizeof(SNTPHeader), 0) == sizeof(SNTPHeader))
+					&& (pSocketFun->Recv(i32SocketSNTP, (uint8 *)&sntpPkt, sizeof(SNTPHeader), 20) == sizeof(SNTPHeader))
+					&& (sntpPkt.stratum != 0) && (sntpPkt.stratum != 16))	/* Check for errors in server response */
+				{
+					/* server's transmit time is what we want */
+					uint32 u32SNTPSeconds = TIME_NTP_TO_LOCAL(ntohl(sntpPkt.transmitTS[0]));
+					SetRTCSeconds(u32SNTPSeconds);
+			#if SUPPORT_V4_MASTER
+				#if(DEVICE_TYPE == V5_YYT3) || (DEVICE_TYPE == V5_YYT4)
+					if(labs(u32SNTPSeconds - g_GpsData.u32RTCSeconds) > 5)
+				#else
+					if(1)
 				#endif
+					{
+						REAL_TIME_VAR RealTime;
+						CalDateByRTCSeconds(u32SNTPSeconds, &RealTime);
+						SetYKFTimeByDate(RealTime.u8Year, RealTime.u8Month, RealTime.u8Day,
+										RealTime.u8Hour, RealTime.u8Minute, RealTime.u8Second);
 					}
-					break;	/* 完成链接 */
+			#endif
+					pSocketFun->Close(i32SocketSNTP);
+					return TRUE;
 				}
 			}
 		}
 		pSocketFun->Close(i32SocketSNTP);
 	}
+	return FALSE;
 }
 /******************************** FILE END ********************************/

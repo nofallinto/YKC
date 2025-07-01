@@ -178,6 +178,8 @@ int main(void)
 //  htim2.Instance->EGR = 1;  /* 閺堬拷娴ｅ簼缍匲G缂冾喕璐�1閿涘矂鍣哥純顔款吀閺佹澘娅掗敍灞间簰娓氬灝鐤勯悳鏉跨暰閺冭泛娅掗崥灞绢劄 */
  	InitDebugDat();
  	g_CodeTest.i32Val[99] = SOFTWARE_VER;
+ 	volatile uint32 reset_cause = RCC->CSR;
+ 	RCC->CSR |= RCC_CSR_RMVF;  // 写 1 清除
   /* USER CODE END 1 */
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -208,7 +210,7 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM5_Init();
   MX_TIM1_Init();
-  MX_IWDG_Init();
+//  MX_IWDG_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   /* 閺囧瓨鏌婇崥顖氬З閻╃鍙ч崣姗�鍣洪敍灞筋洤閺嬫粍妲搁崘宄版儙閸旓拷(RCC_CSR_PORRSTF)閵嗕礁宕岀痪褎鍨ㄦ禍杞拌礋鏉烆垯娆㈤柌宥呮儙(RCC_CSR_PINRSTF|RCC_CSR_SFTRSTF)閵嗕浇鐨熺拠鏇犲閺堫剨绱濋崚娆忕殺闁插秴鎯庣拋鈩冩殶濞撳懘娴� */
@@ -498,7 +500,7 @@ static void MX_IWDG_Init(void)
 	if(SOFT_RELEASE1_DEBUG0 || (g_Sys.SerialNo.u32Dat >= 10000000UL)) {
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
-  hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_8;
   hiwdg.Init.Reload = 4095;
   if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
   {
@@ -915,7 +917,7 @@ static void MX_UART4_Init(void)
 
   /* USER CODE END UART4_Init 1 */
   huart4.Instance = UART4;
-  huart4.Init.BaudRate = 9600;
+  huart4.Init.BaudRate = 115200;
   huart4.Init.WordLength = UART_WORDLENGTH_8B;
   huart4.Init.StopBits = UART_STOPBITS_1;
   huart4.Init.Parity = UART_PARITY_NONE;

@@ -129,7 +129,8 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 	{CLN_ST_DRIVE, 			-45,	0,						SPRAY_INSTR_SPRAY_NONE},	/* 2. 校准:右转45度 */
 	{CLN_ST_DRIVE, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 3. 校准:回到0度 */
 	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 4. 运动到边 */
-	{CLN_ST_DRIVE, 			0, 		-1800,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
+//	{CLN_ST_DRIVE, 			0, 		-1800,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
+	{CLN_ST_DRIVE, 			0, 		-1000,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
 	{CLN_ST_DRIVE, 			50, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 6. 旋转50度 */
 	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_FRONT},	/* 7. 前进J弯:减少角度 */
 	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 8. 沿着上沿前进 */
@@ -259,14 +260,14 @@ typedef struct {
 }YKC_CTR;
 YKC_CTR g_YKCCtr;
 
-/* 测试用开关----------------------------------------*/
+/*---------------------测试用开关---------------------*/
 #define CLIFF_DEACTIVE 	FALSE			/* 临时关闭悬崖开关（常为开） */
 #define PUMP_DEACTIVE	FALSE			/* 关闭真空泵 */
 #define LOW_AIR_P		TRUE			/* 允许低真空水平至2300Pa，而不是标准的2800Pa */
 #define DEBUG_PRINT_CLN_STATE	FALSE	/* 打印清污机状态 */
 #define LOW_AIR_CLOSE_CLN	FALSE		/* 低气压时停止擦窗机 */
 #define CLOSE_SPRAY_WATER	TRUE		/* 关闭喷水 */
-/* 测试用开关----------------------------------------*/
+/*----------------------------end----------------------------*/
 
 /* 1000个履带轮脉冲，行走约37mm; 27脉冲/mm; 履带间距约230mm, 擦窗机为265mm*265mm正方形 */
 #define MCH_LENGTH_mm				265.0f		/* 机身长度 */
@@ -293,51 +294,7 @@ void NextWinClnSTBySeq(uint8 u8NewSeqNo_0Auto);
 /***************************************************************************
  							functions definition
 ***************************************************************************/
-void GPRS_Test(void)
-{
-	/* GPRS测试 */
-	extern UART_HandleTypeDef huart4;
-	SOCKET SocketFd; /* 百度相关套接字 */
-	struct sockaddr_in Socket_Gprs; /* 测试用地址族 SOCKADDR_IN*/
 
-	/* GPRS连接变量 */
-	int8 i8S_Result, i8R_Result, i8C_Result_Close, i8C_Result_Connect = -1;
-	uint8 aU8GprsBuffer[500];
-
-	/* 连接百度测试 (1次) */
-	/* 百度ip地址定义 */
-#define BAIDU_IP "220.181.111.232"  		/* 百度的IP地址，注意有时可能会变化 */
-#define BAIDU_PORT 80  						/* 百度HTTP端口号 */
-	memset(&Socket_Gprs, 0, sizeof(Socket_Gprs));
-	Socket_Gprs.sin_family = AF_INET; /* 地址族采用ipv4通信 */
-	Socket_Gprs.sin_port = htons(80); /* 将端口号转为网络字节 */
-	Socket_Gprs.sin_addr.s_addr = htonl(0x279c420a); /* 将地址转为主机字节序，然后在转为网络字节序 */
-	SocketFd = GprsSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP);  /* 使用流式套接字类型 */
-
-	while(i8C_Result_Connect != GPRS_SUC) { /* 重复连接保证连接上 */
-		i8C_Result_Connect = GprsConnect(SocketFd, &Socket_Gprs, sizeof(Socket_Gprs));
-	}
-
-	sprintf((uint8*)aU8GprsBuffer, "GET /?st=1 HTTP/1.1\r\nHost:www.baidu.com\r\n\r\n");
-	i8S_Result = GprsSend(SocketFd, aU8GprsBuffer, strlen(aU8GprsBuffer), 0);
-	while(i8S_Result > 0) { 	/* 当成功发送命令后，进行接收(注意要循环接收，网页发送信息不会一次发完) */
-		i8R_Result = GprsRecv(SocketFd, aU8GprsBuffer, sizeof(aU8GprsBuffer), 0);
-		if(i8R_Result > 0) { /* 成功接收到数据 */
-//			sprintf(aU8GprsBuffer, "receive:%d byte\r\n", i8R_Result);
-			printf("收到了%d 字节\n", i8R_Result);
-			/* 将接收到的回复发送到串口中，方便调试 */
-			HAL_UART_Transmit(&huart4, (const uint8 *)aU8GprsBuffer, i8R_Result, 500);
-
-			/* 测试完将连接关闭 */
-			i8C_Result_Close = GprsClose(SocketFd);
-			if(i8C_Result_Close == GPRS_SUC) { /* 关闭成功 */
-				sprintf(aU8GprsBuffer, "finish closed\r\n");
-				HAL_UART_Transmit(&huart4, (const uint8 *)aU8GprsBuffer, strlen(aU8GprsBuffer), 500);
-			}
-			break;
-		}
-	}
-}
 /*==========================================================================
 | Description	: 
 | In/Out/G var	:
@@ -384,8 +341,6 @@ void InitMdlCtr(void)		/* rename from InitYKC() */
     	TtsSpeak(VOICE_AIR_PRES_ABN, FALSE);
 		configASSERT(FALSE);
 	}
-
-//    GPRS_Test();
 
 	/* 初始化红外遥控器  TIM5频率1MHz, ARR==65535 */
 	extern TIM_HandleTypeDef htim5;
@@ -510,7 +465,8 @@ void WinClnDebug(void)
 			"后左悬空",
 			"后右悬空"
 	};
-	printf("擦窗机运动状态: %s 角度: %.2f 目标角度: %.2f cnt = %d\n", aChWinClnSTStr[g_YKCCtr.WinClnST], g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle, i32Cnt++);
+//	printf("擦窗机运动状态: %s 角度: %.2f 目标角度: %.2f cnt = %d\n", aChWinClnSTStr[g_YKCCtr.WinClnST], g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle, i32Cnt++);
+	printf("\n左轮电流：%.2f, 右轮电流：%.2f\n", g_MsrRes.fLeftCur, g_MsrRes.fRightCur);
 	/* 打印开出状态 */
 	printf("擦窗机碰撞悬空状态: ");
 	for(int i = 0; i <= CLIFF_REAR_RIGHT_DInNo; i++) {
@@ -1130,8 +1086,8 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			}
 			break;
 		case IR_BTN_UP:
-			g_YKCCtr.fLeftDuty = 0.6f;
-			g_YKCCtr.fRightDuty = 0.6f;
+			g_YKCCtr.fLeftDuty = 0.8f;
+			g_YKCCtr.fRightDuty = 0.8f;
 			break;
 		case IR_BTN_DOWN:
 			g_YKCCtr.fLeftDuty = -1;

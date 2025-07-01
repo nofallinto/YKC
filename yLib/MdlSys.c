@@ -202,14 +202,15 @@ void CtrTask(const void* argument)
 	DiscJtagAndStartWDT();
 	InitMdlCtr();
 	g_Sys.bCtrMdlOK = TRUE;
-
 	for(;;) {
 		KickWatchDog();
 		Load_update();
     #if (!REMOTE_DEBUG_TERMINAL)
 		g_Sys.u8CpuLoad = Load_getCPULoad();
     #endif
-
+		if(g_Sys.tReboot_0Null_nUrgent_pWaitIdle) {
+			SysCtlReset();
+		}
 		RunMdlCtr();
 		Semaphore_pend(g_SysBlock.SEM_Ctr, OS_TICK_KHz*10);			//Semaphore_pend(SEM_CtrTskRun, OS_TICK_KHz*40);
 

@@ -31,6 +31,10 @@
 
 #if !SUPPORT_ETHERNET
 
+/*------------------调试使用------------------*/
+#define DEBUG_GPRS_UART_INFO	TRUE		/* 打开GPRS通信时的调试信息 */
+/*------------------end------------------*/
+
 struct in_addr {
     uint32  s_addr;             /* 32 bit long IP address, net order */
 };
@@ -122,27 +126,28 @@ typedef struct {
 }GPRS_COMM;
 EXT GPRS_COMM g_GprsComm;		/* 不能放Not_ZeroInit */
 
-/* 用于保存GPRS数据的环形缓冲区 */
-#define RING_BUFFER_MAX_SIZE		2048			/* 环形缓冲区大小 */
-typedef struct {
+#define RING_BUFFER_MAX_SIZE		1024		/* 环形缓冲区大小, 要足够大. 否则如果不及时读会覆盖旧数据导致数据错乱 */
+typedef struct {	/* 用于保存从GPRS接收的数据的环形缓冲区 */
     uint8 aU8Buffer[RING_BUFFER_MAX_SIZE];    	/* 缓冲区指针 */
     uint16 uHead;      /* 头指针 */
     uint16 uRear;      /* 尾指针 */
 }RingBuffer_t;
 EXT RingBuffer_t g_GPRSRingBuffer;	/* GPRS的环形队列 */
-/* 环形缓冲区相关函数声明 */
-void RingBuffer_Init(RingBuffer_t *pRingBuffer);
-/* 往环形队列里写数据, 会覆盖旧数据 */
-void RingBuffer_Write(RingBuffer_t *pRingBuffer, const uint8 *cnst_pU8Data, uint16 uLen);
-/* 读取环形队列中所有数据 */
-uint16 RingBuffer_Read(RingBuffer_t *pRingBuffer, uint8 *pU8Data, uint16 uReadLen);
-BOOL GPRS_WaitSocketIdle(SOCKET SocketId, uint32 u32MaxNAcked, uint8 u8MaxStuckCnt, uint16 uTotalTimeoutMs);
-/* 获取未发送的字节数 */
-uint16 GPRS_GetUnsentBLen(SOCKET SocketId);
-/* 软件复位GPRS */
-BOOL GPRS_Reset(void);
-uint16 StrRemoveHashData(uint8 *pSrc, uint16 uDataLen);
 
+/*---------------环形缓冲区相关函数声明---------------*/
+void RingBuffer_Init(RingBuffer_t *pRingBuffer);		/* 初始化 */
+void RingBuffer_Write(RingBuffer_t *pRingBuffer, const uint8 *cnst_pU8Data, uint16 uLen);	/* 写数据, 缓冲区满了会覆盖旧数据 */
+uint16 RingBuffer_Read(RingBuffer_t *pRingBuffer, uint8 *pU8Data, uint16 uReadLen);			/* 读取数据, 如果想读所有数据直接传RING_BUFFER_MAX_SIZE */
+/*---------------end---------------*/
+
+/*---------------GPRS相关函数声明---------------*/
+BOOL GPRS_WaitSocketIdle(SOCKET SocketId, uint32 u32MaxNAcked, uint8 u8MaxStuckCnt, uint16 uTotalTimeoutMs);	/* 等待指定socket发送完成 */
+uint16 GPRS_GetUnsentBLen(SOCKET SocketId);						/* 获取指定socket未发送的字节数 */
+uint16 StrRemoveHashData(uint8 *pSrc, uint16 uDataLen);			/* 去除掉无用的数据 */
+uint8 GPRS_GetSigStrong(void);									/* 获取GPRS信号强度 */
+/*---------------end---------------*/
+
+/*---------------GPRS 网络通信相关函数---------------*/
 EXT SOCKET GprsSocket(int32 i32Domain, int32 i32Type, int32 i32Protocl);
 EXT int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len);
 EXT int32 GprsRecv(SOCKET socketFd, uint8 *pDstBuf, int32 iReadBLen, int32 flags);
@@ -151,5 +156,6 @@ EXT int32 GprsClose(SOCKET socketFd);
 EXT int32 GprsSetSockopt(SOCKET socketFd, int32 u32Level, int32 u32Op, void *pbuf, int32 i32Bufsize);
 EXT BOOL GprsDnsQuery(uint8* domain, uint32 *pU32IpResolved);
 EXT void SyncRealTimeByGPRS(void);
+/*---------------end---------------*/
 
 #endif /* GPRS_H_ */

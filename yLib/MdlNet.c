@@ -118,6 +118,7 @@ BOOL OpenMqttSocketAndConnMqttServer(uint8 u8MqttTaskNo)
 	MQTT_COMM* pMqttComm = &g_MqttComm[u8MqttTaskNo];
 	uint8* pTxBuf = pMqttComm->u8TRBuf;
 	pMqttComm->GprsNewAdd.bSentPingFlag = FALSE;
+	pMqttComm->GprsNewAdd.uTimer_SendPing_ms = 0xFFFF;
 	/* 服务器DNS解析:  用 Mqtt通讯的TRBuf作为DNS解析临时使用的ram，一次DNS解析耗时约12~16ms,这个函数消耗内存估计在700B */
 	if(!CheckDebugVersion()) {
 		PrintStringNoOvChk(&pTxBuf, "s0.mqtt.dev.yoplore.com");
@@ -175,7 +176,11 @@ BOOL OpenMqttSocketAndConnMqttServer(uint8 u8MqttTaskNo)
 				}
 				/* 设置接收超时 */
 				struct timeval timeout;
-				timeout.tv_sec = SOCKET_RCV_TIMEOUT_s*OS_TICK_KHz;
+				if(MQTT_TYPE_PUB == u8MqttTaskNo) {	/* PUB的接收不需要这么慢 */
+					timeout.tv_sec = 1*OS_TICK_KHz;
+				} else {
+					timeout.tv_sec = SOCKET_RCV_TIMEOUT_s*OS_TICK_KHz;
+				}
 				timeout.tv_usec = 0*OS_TICK_KHz;
 				if(pSocketFunc->SetSockopt(pMqttComm->MqttSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
 					pSocketFunc->Close(pMqttComm->MqttSocket);
@@ -285,6 +290,12 @@ BOOL RecvFromMqttServer(MQTT_COMM* pMqttComm)
 		}
 	}
 #else
+//	do {	/* While里的判断仅仅是为了让第一个判断成立时，标志位被清除. */
+//		if(pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0) != 2) {
+//				return FALSE;
+//		}
+//	}while(pMqttComm->u8TRBuf[0] == MQTT_MSG_PINGRESP && ((pMqttComm->GprsNewAdd.bSentPingFlag = FALSE) || 1));
+
 	if(pSocketFunc->Recv(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0) != 2) {
 		return FALSE;
 	}
@@ -318,7 +329,7 @@ BOOL RecvFromMqttServer(MQTT_COMM* pMqttComm)
 	uint8 u8Cnt = 3;
 	while((iRemainLen > 0) && u8Cnt) {
 		iRcvLen = pSocketFunc->Recv(pMqttComm->MqttSocket, pBuf, iRemainLen, 0);
-		if(iRcvLen == GPRS_ERR_NO_DATA) {		/* 可能网不好没接收完, 这里有三次容错机会 */
+		if(iRcvLen == 0) {		/* 可能网不好没接收完, 这里有三次容错机会 */
 			u8Cnt--;
 			continue;
 		} else if(iRcvLen < 0) {	/* 通信失败了 */
@@ -412,19 +423,22 @@ BOOL PingMqttServer(MQTT_COMM *pMqttComm)
 	return FALSE;
 #else
 	/* 由于网络较慢, 这里只发送PING包, 不接收响应 校验响应在RecvFromMqttServer函数中. */
-	if(g_GprsComm.Socket[pMqttComm->MqttSocket - 1].u8Res == GPRS_ERR_CONNECTION_ABN) {	/* 连接已断开 */
+	if(!g_GprsComm.Socket[pMqttComm->MqttSocket - 1].bIsConnect) {	/* 连接已断开 */
 		return FALSE;
 	}
-	if(!pMqttComm->GprsNewAdd.bSentPingFlag) {	/* 还没发送过PING包 */
-		/* 发送PING包 */
-		if(pSocketFunc->Send(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0) == 2) {
-			pMqttComm->GprsNewAdd.bSentPingFlag = TRUE;
-			pMqttComm->GprsNewAdd.uRecvPingRespCnt = 10000;	/* 超时时间10S */
-			return TRUE;
-		} else {
-			return FALSE;
+	if(!pMqttComm->GprsNewAdd.bSentPingFlag) {	/* 还没发送过PING包, 防止发送多个ping包 */
+		if(pMqttComm->GprsNewAdd.uTimer_SendPing_ms > 20000) {		/* 每隔20s发送一次Ping包 */
+			pMqttComm->GprsNewAdd.uTimer_SendPing_ms = 0;
+			/* 发送PING包 */
+			if(pSocketFunc->Send(pMqttComm->MqttSocket, pMqttComm->u8TRBuf, 2, 0) == 2) {
+				pMqttComm->GprsNewAdd.bSentPingFlag = TRUE;
+				pMqttComm->GprsNewAdd.uTmr_RecvPingResp_ms = 30000;	/* 超时时间30S */
+				return TRUE;
+			} else {
+				return FALSE;
+			}
 		}
-	} else if(pMqttComm->GprsNewAdd.uRecvPingRespCnt == 0) {	/* 已经发送过PING包, 并且接收超时了 */
+	} else if(pMqttComm->GprsNewAdd.uTmr_RecvPingResp_ms == 0) {	/* 已经发送过PING包, 并且接收超时了 */
 		return FALSE;
 	}
 	return TRUE;	/* 发送过PING包, 接收还没超时 */
@@ -611,9 +625,7 @@ void MqttPubTask(const void* argument)
 	MQTT_COMM* pMqttComm = &g_MqttComm[u8MqttTaskNo];
 
 	while(1) {
-//				while(1) {
-//					Task_sleep(10000);
-//				}
+
 		OFF_INDICATOR_SERVER;		/* 复位服务器指示 */
 		pMqttComm->u8Count_ConnTry = 0;
 		while(!OpenMqttSocketAndConnMqttServer(u8MqttTaskNo)) {
@@ -638,7 +650,7 @@ void MqttPubTask(const void* argument)
 				 }
 			} else {
 				if(GPRS_GetUnsentBLen(pMqttComm->MqttSocket) > GPRS_MAX_SEND_LEN) {	/* 还有大量消息正在发送中, 等待 */
-					Task_sleep(2000);
+					Task_sleep(10);
 					continue;
 				}
 				g_TcpIPComm.uTmr_MqttPubRun_ms = 1000;
@@ -662,7 +674,7 @@ void MqttPubTask(const void* argument)
 					break;
 				}
 			}
-			Task_sleep(100);
+//			Task_sleep(1000);
 			RecvFromMqttServer(pMqttComm);
 //			GPRS_GetSigStrong();	/* 看一下信号强度 */
 		} while(PingMqttServer(pMqttComm));
@@ -776,9 +788,6 @@ void MqttSubTask(const void* argument)
 
 	/* 订阅端的主题 */
 	while(1) {
-//		while(1) {
-//			Task_sleep(10000);
-//		}
 		pMqttComm->u8Count_ConnTry = 0;
 		while(1) {
 			if(!OpenMqttSocketAndConnMqttServer((uint8)u32MqttTaskNo)) {
@@ -1000,7 +1009,7 @@ void MqttSubTask(const void* argument)
 				#endif
 					}
 				}
-				Task_sleep(500);	/* 休眠一会给另一个线程一点机会 */
+//				Task_sleep(100);	/* 休眠一会给另一个线程一点机会 */
 #if SUPPORT_GPRS && SUPPORT_ETHERNET
 				if((GetCurrAccess() == INTERNET_ACCESS_GPRS) && CheckEthernet()) {
 					break;		/* 如果以太网连接恢复则断开GPRS(以太网优先) */

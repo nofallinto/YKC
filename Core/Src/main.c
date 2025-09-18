@@ -176,7 +176,7 @@ int main(void)
 //  pU32 = (uint32*)0xE004200C;
 //  *pU32 = 0x0003;   /* debug閺嗗倸浠燙PU閿涘苯浠燭IM1/8閿涘奔澶嶉弮鑸碉拷褏娈� */
 //  htim2.Instance->EGR = 1;  /* 閺堬拷娴ｅ簼缍匲G缂冾喕璐�1閿涘矂鍣哥純顔款吀閺佹澘娅掗敍灞间簰娓氬灝鐤勯悳鏉跨暰閺冭泛娅掗崥灞绢劄 */
- 	InitDebugDat();
+  	InitDebugDat();
  	g_CodeTest.i32Val[99] = SOFTWARE_VER;
  	volatile uint32 reset_cause = RCC->CSR;
  	RCC->CSR |= RCC_CSR_RMVF;  // 写 1 清除

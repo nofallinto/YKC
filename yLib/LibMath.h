@@ -25,6 +25,7 @@
  							include files
 ***************************************************************************/
 #include "math.h"
+
 #include "GlobalVar.h"
 
 #define SUPPORT_SAMPLE ((DEVICE_TYPE != V5_YBT2) && (DEVICE_TYPE != V5_YBT3) && (DEVICE_TYPE != V5_YBT4))
@@ -349,6 +350,17 @@ EXT uint16 CalDaysFromOrigin(uint8 u8Year, uint8 u8Month, uint8 u8Day);
  * 数据排序
  *==========================================================================*/
 EXT void sortF32Array(float32* pF32, uint16 uBufLen);
+
+
+/*===========================================================================
+ * 队列操作
+ *==========================================================================*/
+BOOL InitF32Queue(F32_QUEUE_t *pQueue, uint16 uLen);		/* f32队列初始化 */
+uint32 GetF32QueueSize(F32_QUEUE_t *pQueue);				/* 获取队列大小 */
+void F32QueueEnter(F32_QUEUE_t *pQueue, float32 fVal);		/* f32入队 */
+void F32QueueClear(F32_QUEUE_t *pQueue);					/* 清空队列 */
+float32 F32QueueGetMaxElement(F32_QUEUE_t *pQueue);			/* 获取F32队列中最大的元素 */
+float GetF32QueueSlope(F32_QUEUE_t *pQueue, float32 fXInterval, uint16 uMinSize);
 
 /************   exclude redefinition and c++ environment   ****************/
 

@@ -202,6 +202,7 @@ void CtrTask(const void* argument)
 	DiscJtagAndStartWDT();
 	InitMdlCtr();
 	g_Sys.bCtrMdlOK = TRUE;
+
 	for(;;) {
 		KickWatchDog();
 		Load_update();
@@ -528,11 +529,18 @@ void DrvSoftUpdateTick_1KHz(void)
 	if(g_Sys.uTmr_EraseFlash_DistPwr_ms) {
 		g_Sys.uTmr_EraseFlash_DistPwr_ms--;
 	}
-	if(g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uRecvPingRespCnt) {
-		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uRecvPingRespCnt--;
+	if(g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTmr_RecvPingResp_ms) {
+		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTmr_RecvPingResp_ms--;
 	}
-	if(g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uRecvPingRespCnt) {
-		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uRecvPingRespCnt--;
+	if(g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTmr_RecvPingResp_ms) {
+		g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTmr_RecvPingResp_ms--;
+	}
+
+	if(g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTimer_SendPing_ms < 0xFFFF) {
+		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTimer_SendPing_ms++;
+	}
+	if(g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTimer_SendPing_ms < 0xFFFF) {
+		g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTimer_SendPing_ms++;
 	}
 }
 

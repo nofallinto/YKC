@@ -5500,4 +5500,86 @@ void sortF32Array(float32* pF32, uint16 uBufLen)
 	}
 }
 
+/* 获取队列大小 */
+uint32 GetF32QueueSize(F32_QUEUE_t *pQueue)
+{
+	return ((pQueue->uEnd + pQueue->uMaxLen - pQueue->uStart) % pQueue->uMaxLen);
+}
+
+/* f32队列初始化 */
+BOOL InitF32Queue(F32_QUEUE_t *pQueue, uint16 uLen)
+{
+	pQueue->pFData = (float32 *)malloc(sizeof(float32) * uLen);
+	if(pQueue->pFData == NULL) {
+		return FALSE;
+	}
+	pQueue->uEnd = 0;
+	pQueue->uStart = 0;
+	pQueue->uMaxLen = uLen;
+	return TRUE;
+}
+
+/* f32入队 */
+void F32QueueEnter(F32_QUEUE_t *pQueue, float32 fVal)
+{
+	if(((pQueue->uEnd + 1) % pQueue->uMaxLen) == pQueue->uStart) {	/* 队满 */
+		pQueue->uStart = (pQueue->uStart + 1) % pQueue->uMaxLen;
+	}
+	pQueue->pFData[pQueue->uEnd] = fVal;
+	pQueue->uEnd = (pQueue->uEnd + 1) % pQueue->uMaxLen;
+}
+
+/* 清空队列 */
+void F32QueueClear(F32_QUEUE_t *pQueue)
+{
+	pQueue->uEnd = 0;
+	pQueue->uStart = 0;
+}
+
+/* 获取F32队列中最大的元素 */
+float32 F32QueueGetMaxElement(F32_QUEUE_t *pQueue)
+{
+	uint16 uQueueLen = GetF32QueueSize(pQueue);
+	if(uQueueLen == 0) {
+		return 0.0f;
+	}
+	float32 fMaxVal = pQueue->pFData[pQueue->uStart];
+	for(uint16 i = 1; i < uQueueLen; i++) {
+		float32 fVal = pQueue->pFData[(pQueue->uStart + i) % pQueue->uMaxLen];
+		if(fMaxVal < fVal) {
+			fMaxVal = fVal;
+		}
+	}
+	return fMaxVal;
+}
+
+/**
+ * 使用线性回归计算队列中元素的斜率, 横坐标必须是均匀分布
+ * 参数2： 横坐标分布间隔
+ * 参数3： 队列中最小元素个数
+ */
+float GetF32QueueSlope(F32_QUEUE_t *pQueue, float32 fXInterval, uint16 uMinSize)
+{
+    uint16 uQueueLen = GetF32QueueSize(pQueue);
+    if(uQueueLen < uMinSize) {
+    	return 0.0f;
+    }
+
+    float32 fSumX = 0, fSumY = 0, fSumXY = 0, fSumX2 = 0;
+    for(int i = 0; i < uQueueLen; i++) {
+        float fX = i * fXInterval;  /* x轴坐标 */
+        float fY = pQueue->pFData[(pQueue->uStart + i) % pQueue->uMaxLen];
+        fSumX  += fX;
+        fSumY  += fY;
+        fSumXY += fX * fY;
+        fSumX2 += fX * fX;
+    }
+
+    float fDenominator = (uQueueLen * fSumX2 - fSumX * fSumX);
+    if(fDenominator == 0) {
+    	return 0.0f;
+    }
+
+    return ((uQueueLen * fSumXY - fSumX * fSumY) / fDenominator);
+}
 /******************************** FILE END ********************************/

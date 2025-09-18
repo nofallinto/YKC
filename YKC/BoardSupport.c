@@ -3,9 +3,9 @@
  *
  * File			: BSP.c
  * Author		: Wang Renfei
- * Description	: °å¼¶Ö§³ÖÎÄ¼ş, º­¸ÇÓ²¼ş³õÊ¼»¯
- *				: ÒÔ¼°SYS/BIOSÏà¹ØµÄÇı¶¯ : GPIO,SDSPI,UART,ÒÔÌ«Íø,USB,PWM
- *				: ÆäÓàÓ²¼ş£¬Èç:ADC, CAP, RTC ÓÉ¸÷×ÔÄ£¿é×ÔĞĞ³õÊ¼»¯
+ * Description	: æ¿çº§æ”¯æŒæ–‡ä»¶, æ¶µç›–ç¡¬ä»¶åˆå§‹åŒ–
+ *				: ä»¥åŠSYS/BIOSç›¸å…³çš„é©±åŠ¨ : GPIO,SDSPI,UART,ä»¥å¤ªç½‘,USB,PWM
+ *				: å…¶ä½™ç¡¬ä»¶ï¼Œå¦‚:ADC, CAP, RTC ç”±å„è‡ªæ¨¡å—è‡ªè¡Œåˆå§‹åŒ–
  * Comments		:
  * Date			: 2014-11-24
  *
@@ -24,14 +24,15 @@
 /***************************************************************************
  						include files
 ***************************************************************************/
-/* ÏîÄ¿¹«¹²Í·ÎÄ¼ş */
+/* é¡¹ç›®å…¬å…±å¤´æ–‡ä»¶ */
 #include <string.h>
 #include "GlobalVar.h"
 #include "LibMath.h"
 #include "MdlSys.h"
-
-/* ±¾¼¶ÒÔ¼°ÏÂ¼¶Ä£¿éÍ·ÎÄ¼ş */
+#include <stdio.h>
+/* æœ¬çº§ä»¥åŠä¸‹çº§æ¨¡å—å¤´æ–‡ä»¶ */
 #include "BoardSupport.h"
+#include "MdlUARTnModbus.h"
 
 /***************************************************************************
  						global variables definition
@@ -47,7 +48,7 @@
  							functions definition
 ***************************************************************************/
 /*==========================================================================
-| Description	: ¶¨Ê±Æ÷³õÊ¼»¯£¬×Ü¹²8¸ö¶¨Ê±Æ÷
+| Description	: å®šæ—¶å™¨åˆå§‹åŒ–ï¼Œæ€»å…±8ä¸ªå®šæ—¶å™¨
 | In/Out/G var	:
 | Author		: Wang Renfei			Date	: 2014-11-24
 \=========================================================================*/
@@ -61,45 +62,45 @@ const GPIO_PINCFG cnst_GpioPinCfg[] = {
     /* KickDog */
     {GPIOF, GPIO_PIN_9},
 
-    /* ¿ªÈë */
-    {GPIOE, GPIO_PIN_8},        //»úÆ÷ÈËÈí¼ş¿ªÍ£»ú¿ØÖÆ
-    {GPIOD, GPIO_PIN_6},        //Ë®±Ã¹ÜµÀË®Î»¼ì²â
+    /* å¼€å…¥ */
+    {GPIOE, GPIO_PIN_8},        //æœºå™¨äººè½¯ä»¶å¼€åœæœºæ§åˆ¶
+    {GPIOD, GPIO_PIN_6},        //æ°´æ³µç®¡é“æ°´ä½æ£€æµ‹
 
 #if USE_SELF_DEVELOP_SHELL
-    {GPIOD, GPIO_PIN_3},        //×óÏÂÅö×²¿ª¹Ø
-    {GPIOD, GPIO_PIN_4},        //×óÉÏÅö×²¿ª¹Ø
-    {GPIOB, GPIO_PIN_0},        //ÓÒÉÏÅö×²¿ª¹Ø
-    {GPIOC, GPIO_PIN_5},        //ÓÒÏÂÅö×²¿ª¹Ø
+    {GPIOD, GPIO_PIN_3},        //å·¦ä¸‹ç¢°æ’å¼€å…³
+    {GPIOD, GPIO_PIN_4},        //å·¦ä¸Šç¢°æ’å¼€å…³
+    {GPIOB, GPIO_PIN_0},        //å³ä¸Šç¢°æ’å¼€å…³
+    {GPIOC, GPIO_PIN_5},        //å³ä¸‹ç¢°æ’å¼€å…³
 
-    {GPIOD, GPIO_PIN_2},        //×ó²àÅö×²¿ª¹Ø
-    {GPIOB, GPIO_PIN_1},        //Ç°ÓÒÅö×²¿ª¹Ø
-    {GPIOD, GPIO_PIN_5},        //Ç°×óÅö×²¿ª¹Ø
-    {GPIOC, GPIO_PIN_4},		//ÓÒ²àÅö×²¿ª¹Ø
+    {GPIOD, GPIO_PIN_2},        //å·¦ä¾§ç¢°æ’å¼€å…³
+    {GPIOB, GPIO_PIN_1},        //å‰å³ç¢°æ’å¼€å…³
+    {GPIOD, GPIO_PIN_5},        //å‰å·¦ç¢°æ’å¼€å…³
+    {GPIOC, GPIO_PIN_4},		//å³ä¾§ç¢°æ’å¼€å…³
 #else
-	{GPIOD, GPIO_PIN_4},        //²à×óÇ°Åö×²¿ª¹Ø 3
-    {GPIOD, GPIO_PIN_3},        //²à×óºóÅö×²¿ª¹Ø 4
-	{GPIOC, GPIO_PIN_5},        //²àÓÒÇ°Åö×²¿ª¹Ø 5
-    {GPIOB, GPIO_PIN_0},        //²àÓÒºóÅö×²¿ª¹Ø 6
+	{GPIOD, GPIO_PIN_4},        //ä¾§å·¦å‰ç¢°æ’å¼€å…³ 3
+    {GPIOD, GPIO_PIN_3},        //ä¾§å·¦åç¢°æ’å¼€å…³ 4
+	{GPIOC, GPIO_PIN_5},        //ä¾§å³å‰ç¢°æ’å¼€å…³ 5
+    {GPIOB, GPIO_PIN_0},        //ä¾§å³åç¢°æ’å¼€å…³ 6
 
-	{GPIOD, GPIO_PIN_5},        //Ç°×óÅö×²¿ª¹Ø 7
-	{GPIOC, GPIO_PIN_4},		//Ç°ÓÒÅö×²¿ª¹Ø 8
-    {GPIOD, GPIO_PIN_2},        //ºó×óÅö×²¿ª¹Ø 9
-    {GPIOB, GPIO_PIN_1},        //ºóÓÒÅö×²¿ª¹Ø 10
+	{GPIOD, GPIO_PIN_5},        //å‰å·¦ç¢°æ’å¼€å…³ 7
+	{GPIOC, GPIO_PIN_4},		//å‰å³ç¢°æ’å¼€å…³ 8
+    {GPIOD, GPIO_PIN_2},        //åå·¦ç¢°æ’å¼€å…³ 9
+    {GPIOB, GPIO_PIN_1},        //åå³ç¢°æ’å¼€å…³ 10
 #endif
-    {GPIOA, GPIO_PIN_15},       //ĞüÑÂ¿ª¹Ø2 ×óÉÏ 11
-	{GPIOE, GPIO_PIN_7},        //ĞüÑÂ¿ª¹Ø3 ÓÒÉÏ 12
-	{GPIOE, GPIO_PIN_5},        //ĞüÑÂ¿ª¹Ø1 ×óÏÂ 13
-	{GPIOA, GPIO_PIN_3},        //ĞüÑÂ¿ª¹Ø4 ÓÒÏÂ 14
-    /* ¼ÌµçÆ÷ */
-    {GPIOD, GPIO_PIN_1}, 	      //×óÏÂË®±Ã
-    {GPIOC, GPIO_PIN_12},        //×óÉÏË®±Ã
-    /* ÆäËû¿ª³ö */
-    {GPIOE, GPIO_PIN_10},       //»úÆ÷ÈË¹¤×÷Ä£Ê½ÈıÉ«Ö¸Ê¾µÆ¿ØÖÆ À¶É«
-    {GPIOE, GPIO_PIN_9},       	//»úÆ÷ÈË¹¤×÷Ä£Ê½ÈıÉ«Ö¸Ê¾µÆ¿ØÖÆ ºìÉ«
-	{GPIOE, GPIO_PIN_11},        //»úÆ÷ÈË¹¤×÷Ä£Ê½ÈıÉ«Ö¸Ê¾µÆ¿ØÖÆ ÂÌÉ«
-	{GPIOE, GPIO_PIN_0},        //ÆäËûÉè±¸µçÔ´
+    {GPIOA, GPIO_PIN_15},       //æ‚¬å´–å¼€å…³2 å·¦ä¸Š 11
+	{GPIOE, GPIO_PIN_7},        //æ‚¬å´–å¼€å…³3 å³ä¸Š 12
+	{GPIOE, GPIO_PIN_5},        //æ‚¬å´–å¼€å…³1 å·¦ä¸‹ 13
+	{GPIOA, GPIO_PIN_3},        //æ‚¬å´–å¼€å…³4 å³ä¸‹ 14
+    /* ç»§ç”µå™¨ */
+    {GPIOD, GPIO_PIN_1}, 	      //å·¦ä¸‹æ°´æ³µ
+    {GPIOC, GPIO_PIN_12},        //å·¦ä¸Šæ°´æ³µ
+    /* å…¶ä»–å¼€å‡º */
+    {GPIOE, GPIO_PIN_10},       //æœºå™¨äººå·¥ä½œæ¨¡å¼ä¸‰è‰²æŒ‡ç¤ºç¯æ§åˆ¶ è“è‰²
+    {GPIOE, GPIO_PIN_9},       	//æœºå™¨äººå·¥ä½œæ¨¡å¼ä¸‰è‰²æŒ‡ç¤ºç¯æ§åˆ¶ çº¢è‰²
+	{GPIOE, GPIO_PIN_11},        //æœºå™¨äººå·¥ä½œæ¨¡å¼ä¸‰è‰²æŒ‡ç¤ºç¯æ§åˆ¶ ç»¿è‰²
+	{GPIOE, GPIO_PIN_0},        //å…¶ä»–è®¾å¤‡ç”µæº
 
-    /* ¿ÕÓà²âÊÔµã */
+    /* ç©ºä½™æµ‹è¯•ç‚¹ */
     {GPIOF, GPIO_PIN_14},
     {GPIOF, GPIO_PIN_15},
     {GPIOG, GPIO_PIN_0},
@@ -113,13 +114,13 @@ void Board_initGPIO(void)
 	/* Once GPIO_init is called, GPIO_config cannot be changed */
 }
 
-/* Çı¶¯ÂÄ´øÂÖ */
-#define BRUSH_MOTOR_PWM_PERIOD  3600       /* 20KHz£¬¿ÆÎÖË¹ÓĞË¢¡¢ÎŞË¢¶¼ÊÇ20KHz */
+/* é©±åŠ¨å±¥å¸¦è½® */
+#define BRUSH_MOTOR_PWM_PERIOD  3600       /* 20KHzï¼Œç§‘æ²ƒæ–¯æœ‰åˆ·ã€æ— åˆ·éƒ½æ˜¯20KHz */
 void Board_DrvWheel(float32 fRightDuty, float32 LeftDuty)
 {
     extern TIM_HandleTypeDef htim3;
-    /* ÓÒÂÄ´ø£ºH:¸ßµçÆ½£¬L:µÍµçÆ½£¬P:PWMÊä³ö */
-    if(fRightDuty == 0) {        /* É²³µ: HH */
+    /* å³å±¥å¸¦ï¼šH:é«˜ç”µå¹³ï¼ŒL:ä½ç”µå¹³ï¼ŒP:PWMè¾“å‡º */
+    if(fRightDuty == 0) {        /* åˆ¹è½¦: HH */
     #if 1
         htim3.Instance->CCR1 = htim3.Instance->ARR + 1;
         htim3.Instance->CCR2 = htim3.Instance->ARR + 1;
@@ -127,16 +128,16 @@ void Board_DrvWheel(float32 fRightDuty, float32 LeftDuty)
         htim3.Instance->CCR1 = 0;
         htim3.Instance->CCR2 = 0;
     #endif
-    } else if(fRightDuty > 0) {  /* Ç°½ø: LP, ¿ÆÎÖË¹ÊÇPH */
+    } else if(fRightDuty > 0) {  /* å‰è¿›: LP, ç§‘æ²ƒæ–¯æ˜¯PH */
         htim3.Instance->CCR1 = F32ToU16(htim3.Instance->ARR*fRightDuty);
         htim3.Instance->CCR2 = 0;
-    } else if(fRightDuty < 0) {  /* ºóÍË: PL, ¿ÆÎÖË¹ÊÇPH */
+    } else if(fRightDuty < 0) {  /* åé€€: PL, ç§‘æ²ƒæ–¯æ˜¯PH */
         htim3.Instance->CCR1 = 0;
         htim3.Instance->CCR2 = F32ToU16(htim3.Instance->ARR*(0-fRightDuty));
     }
 
-    /* ×óÂÄ´ø£ºH:¸ßµçÆ½£¬L:µÍµçÆ½£¬P:PWMÊä³ö */
-    if(LeftDuty == 0) {        /* É²³µ: HH */
+    /* å·¦å±¥å¸¦ï¼šH:é«˜ç”µå¹³ï¼ŒL:ä½ç”µå¹³ï¼ŒP:PWMè¾“å‡º */
+    if(LeftDuty == 0) {        /* åˆ¹è½¦: HH */
     #if 1
         htim3.Instance->CCR3 = htim3.Instance->ARR + 1;
         htim3.Instance->CCR4 = htim3.Instance->ARR + 1;
@@ -144,23 +145,23 @@ void Board_DrvWheel(float32 fRightDuty, float32 LeftDuty)
         htim3.Instance->CCR3 = 0;
         htim3.Instance->CCR4 = 0;
     #endif
-    } else if(LeftDuty > 0) {  /* Ç°½ø: LP, ¿ÆÎÖË¹ÊÇPH */
+    } else if(LeftDuty > 0) {  /* å‰è¿›: LP, ç§‘æ²ƒæ–¯æ˜¯PH */
         htim3.Instance->CCR3 = F32ToU16(htim3.Instance->ARR*LeftDuty);
         htim3.Instance->CCR4 = 0;
-    } else if(LeftDuty < 0) {  /* ºóÍË: PL, ¿ÆÎÖË¹ÊÇPH */
+    } else if(LeftDuty < 0) {  /* åé€€: PL, ç§‘æ²ƒæ–¯æ˜¯PH */
         htim3.Instance->CCR3 = 0;
         htim3.Instance->CCR4 = F32ToU16(htim3.Instance->ARR*(0-LeftDuty));
     }
     //htim3.Instance->ARR = BRUSH_MOTOR_PWM_PERIOD;    
 }
 
-/* Çı¶¯Õæ¿Õ±Ã */
+/* é©±åŠ¨çœŸç©ºæ³µ */
 void Board_DrvPump(float32 fDuty)
 {
     extern TIM_HandleTypeDef htim2;
-    if(fDuty <= 0) {        /* Í££¬¿ÆÎÖË¹ÊÇÁ½¸ö¶¼ÊÇ92%Õ¼¿Õ±È */
+    if(fDuty <= 0) {        /* åœï¼Œç§‘æ²ƒæ–¯æ˜¯ä¸¤ä¸ªéƒ½æ˜¯92%å ç©ºæ¯” */
        htim2.Instance->CCR3 = 0;
-        htim2.Instance->CCR4 = F32ToU16(htim2.Instance->ARR*0.02f);
+       htim2.Instance->CCR4 = F32ToU16(htim2.Instance->ARR*0.02f);
     } else {
         htim2.Instance->CCR3 = htim2.Instance->ARR + 1;
         htim2.Instance->CCR4 = F32ToU16(htim2.Instance->ARR*fDuty);
@@ -170,7 +171,7 @@ void Board_DrvPump(float32 fDuty)
 
 
 /*==========================================================================
-| Description	: AD²ÉÑùÄ£¿é
+| Description	: ADé‡‡æ ·æ¨¡å—
 | In/Out/G var	:
 | Author		: Wang Renfei			Date	: 2008-3-4
 \=========================================================================*/
@@ -183,12 +184,12 @@ void InitSample(void)
 {
 	int8 i;
 	
-	/* ³õÊ¼»¯ÅäÖÃ */
+	/* åˆå§‹åŒ–é…ç½® */
 	/* <NULL> */
 
-	/* ³õÊ¼»¯ÊäÈë½Ó¿Ú±äÁ¿ */
+	/* åˆå§‹åŒ–è¾“å…¥æ¥å£å˜é‡ */
 
-	/* ³õÊ¼»¯Êä³ö½Ó¿Ú±äÁ¿ */
+	/* åˆå§‹åŒ–è¾“å‡ºæ¥å£å˜é‡ */
 	for(i = 0; i < DC_TOTAL_CHN; i++) {
 		g_DCSigADSamp[i].uSampOkDecCnt = ANALOG_ADSAMP_BUF_LEN;
 		g_DCSigADSamp[i].uCurSampPt = 0;
@@ -197,19 +198,19 @@ void InitSample(void)
       	InitUDatUniRec((uDAT_UNI_REC*)&g_PulseCap[i], PULSE_CYCLE_BUF_LEN);
     }
 
-	/* ³õÊ¼»¯ÄÚ²¿È«¾Ö±äÁ¿ */
+	/* åˆå§‹åŒ–å†…éƒ¨å…¨å±€å˜é‡ */
 	for(i = 0; i < MAX_DIN_NUM; i++) {
 		g_uDInFilt[i] = 0xFFFF;
 	}
 
-	/* ³õÊ¼»¯ÏÂ²ãÄ£¿é */
+	/* åˆå§‹åŒ–ä¸‹å±‚æ¨¡å— */
 	
-	/* Æô¶¯Ó²¼ş */
+	/* å¯åŠ¨ç¡¬ä»¶ */
 	InitAdc();
 }
 
 /*==========================================================================
-| Description	: ²ÉÑùTick
+| Description	: é‡‡æ ·Tick
 | In/Out/G var	:
 | Author		: Wang Renfei			Date	: 2016-4-30
 \=========================================================================*/
@@ -217,14 +218,14 @@ extern ADC_HandleTypeDef hadc2;
 void DrvSampleTick_1KHz(void)
 {
 	int8 i;
-	/* ¸üĞÂ¿ªÈë */
+	/* æ›´æ–°å¼€å…¥ */
 	for(i = MAX_DIN_NUM - 1; i >= 0; i--) {
 		g_uDInFilt[i] = (g_uDInFilt[i]<<1) + GPIO_read(GPIO_DIN_StartNo + i);
 	}
 }
 
 /*==========================================================================
-| Description	: ADÖĞ¶ÏÏìÓ¦º¯Êı£¬Íê³ÉÊı¾İ´æ´¢
+| Description	: ADä¸­æ–­å“åº”å‡½æ•°ï¼Œå®Œæˆæ•°æ®å­˜å‚¨
 | In/Out/G var	:
 | Author		: Wang Renfei			Date	: 2015-8-27
 \=========================================================================*/
@@ -238,7 +239,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 }
 
 /*==========================================================================
-| Description	: ×ó²àÂÄ´ø¡¢ÓÒ²àÂÄ´ø¡¢ÎŞË¢µç»ú¡¢²âËÙ¡¢ºìÍâÒ£¿Ø
+| Description	: å·¦ä¾§å±¥å¸¦ã€å³ä¾§å±¥å¸¦ã€æ— åˆ·ç”µæœºã€æµ‹é€Ÿã€çº¢å¤–é¥æ§
 | In/Out/G var	:
 | Author		: Wang Renfei			Date	: 2016-4-30
 \=========================================================================*/
@@ -254,13 +255,13 @@ uint32 GetCPUTimerCnt(void)
     return htim1.Instance->CNT;
 }
 
-/* ºìÍâÒ£¿ØÆ÷³õÊ¼»¯ */
+/* çº¢å¤–é¥æ§å™¨åˆå§‹åŒ– */
 void IrRecvInit(uint8 u8SelectedrIndex)
 {
-	g_IRCtrl.DevComm[u8SelectedrIndex].bBtnRdyDecode = FALSE;						/* Î´²¶»ñµ½ĞÂÊı¾İ */
-	g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle = TRUE;								/* ½øÈë·Ç¿ÕÏĞ×´Ì¬ */
-	g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount = 0;							/* ¶¨Ê±Æ÷Òç³öÇå0 */
-	g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPulseCount = 0;						/* ²¶»ñµ½µÄµçÎ»±ä»¯¼ÆÊıÇå0 */
+	g_IRCtrl.DevComm[u8SelectedrIndex].bBtnRdyDecode = FALSE;						/* æœªæ•è·åˆ°æ–°æ•°æ® */
+	g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle = TRUE;								/* è¿›å…¥éç©ºé—²çŠ¶æ€ */
+	g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount = 0;							/* å®šæ—¶å™¨æº¢å‡ºæ¸…0 */
+	g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPulseCount = 0;						/* æ•è·åˆ°çš„ç”µä½å˜åŒ–è®¡æ•°æ¸…0 */
     memset((void*)g_IRCtrl.DevComm[u8SelectedrIndex].rxFrame, 0x00, sizeof(g_IRCtrl.DevComm[u8SelectedrIndex].rxFrame));
 }
 
@@ -270,22 +271,22 @@ void IrRecvCapture(uint8 u8SelectedrIndex,TIM_HandleTypeDef *pHtim, uint32 u32Cc
 	static uint16 s_uCapTime_last = 0;
 	uCapTime = u32Ccr;
 
-	TIM_RESET_CAPTUREPOLARITY(pHtim, uCapChannl);                      /* ¸´Î»¼«ĞÔÅäÖÃ */
+	TIM_RESET_CAPTUREPOLARITY(pHtim, uCapChannl);                      /* å¤ä½ææ€§é…ç½® */
 
-	if(g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPol == 0) { 		/* »°Ëµ£¬Õâ¸öµØ·½¸ÉÂïÅªµÃÕâÃ´¸´ÔÓ£¿²»ÊÇ¿ÉÒÔÉèÖÃ³ÉÉÏÉı¡¢ÏÂ½µÑØ¶¼¿ÉÒÔ´¥·¢µÄÃ´£¿ ÔÚiocÍ¼ĞÎ½çÃæÀïÖ»ÄÜÅäÖÃ³ÉÒ»¸ö·½Ïò*/
-		TIM_SET_CAPTUREPOLARITY(pHtim, uCapChannl, TIM_INPUTCHANNELPOLARITY_RISING); 		/* ¸Ä±ä¼«ĞÔ */
-		g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPol = 1;        	/* ¼«ĞÔ±êÖ¾Î»¸ÄÎªÉÏÉıÑØ */
+	if(g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPol == 0) { 		/* è¯è¯´ï¼Œè¿™ä¸ªåœ°æ–¹å¹²å˜›å¼„å¾—è¿™ä¹ˆå¤æ‚ï¼Ÿä¸æ˜¯å¯ä»¥è®¾ç½®æˆä¸Šå‡ã€ä¸‹é™æ²¿éƒ½å¯ä»¥è§¦å‘çš„ä¹ˆï¼Ÿ åœ¨iocå›¾å½¢ç•Œé¢é‡Œåªèƒ½é…ç½®æˆä¸€ä¸ªæ–¹å‘*/
+		TIM_SET_CAPTUREPOLARITY(pHtim, uCapChannl, TIM_INPUTCHANNELPOLARITY_RISING); 		/* æ”¹å˜ææ€§ */
+		g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPol = 1;        	/* ææ€§æ ‡å¿—ä½æ”¹ä¸ºä¸Šå‡æ²¿ */
 	} else {
-		TIM_SET_CAPTUREPOLARITY(pHtim, uCapChannl, TIM_ICPOLARITY_FALLING);					/* ¸Ä±ä¼«ĞÔ */
+		TIM_SET_CAPTUREPOLARITY(pHtim, uCapChannl, TIM_ICPOLARITY_FALLING);					/* æ”¹å˜ææ€§ */
 		g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPol = 0;
 	}
-	if(!g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle) {              /* Èç¹ûµ±Ç°Îª¿ÕÏĞ×´Ì¬£¬¿ÕÏĞ²¶»ñµ½µÄÊ±Ğò£¬ÎªµÚÒ»¸öÏÂ½µÑØ */
+	if(!g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle) {              /* å¦‚æœå½“å‰ä¸ºç©ºé—²çŠ¶æ€ï¼Œç©ºé—²æ•è·åˆ°çš„æ—¶åºï¼Œä¸ºç¬¬ä¸€ä¸ªä¸‹é™æ²¿ */
 		IrRecvInit(u8SelectedrIndex);
 	} else {
 		if(g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPulseCount < IR_RX_SEQ_BLEN*2) {
-			/* Õâ¸ö´úÂëÊÇÓĞ·çÏÕµÄ£¬¿ÉÄÜ£ºT5Òç³öºÍ²¶×½Í¬Ê±·¢Éú£¬×îºÃ»¹ÊÇÇ¡µ±Éè¼ÆT5ÆµÂÊ£¬16bit¼ÆÊ±Æ÷Ó¦¸ÃÊÇ×ã¹»µÄ */
-			/* ¡ª¡ª¡ª¡ª²éÔ´ÂëÈ·ÈÏ£¬Èç¹ûÍ¬Ê±·¢Éú£¬InputCapture()»áÅÅÔÚPeriodElapse()Ö®ºóÖ´ĞĞ */
-			g_IRCtrl.DevComm[u8SelectedrIndex].rxFrame[g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPulseCount] = g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount*65536 + uCapTime - s_uCapTime_last;		/* Ôö¼Óg_IRCtrl.u8Tim_udt_count*65536ÊÇÎªÖ§³Ö¿çÒç³ö */
+			/* è¿™ä¸ªä»£ç æ˜¯æœ‰é£é™©çš„ï¼Œå¯èƒ½ï¼šT5æº¢å‡ºå’Œæ•æ‰åŒæ—¶å‘ç”Ÿï¼Œæœ€å¥½è¿˜æ˜¯æ°å½“è®¾è®¡T5é¢‘ç‡ï¼Œ16bitè®¡æ—¶å™¨åº”è¯¥æ˜¯è¶³å¤Ÿçš„ */
+			/* â€”â€”â€”â€”æŸ¥æºç ç¡®è®¤ï¼Œå¦‚æœåŒæ—¶å‘ç”Ÿï¼ŒInputCapture()ä¼šæ’åœ¨PeriodElapse()ä¹‹åæ‰§è¡Œ */
+			g_IRCtrl.DevComm[u8SelectedrIndex].rxFrame[g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPulseCount] = g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount*65536 + uCapTime - s_uCapTime_last;		/* å¢åŠ g_IRCtrl.u8Tim_udt_count*65536æ˜¯ä¸ºæ”¯æŒè·¨æº¢å‡º */
 		}
 		g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount = 0;
 		if(g_IRCtrl.DevComm[u8SelectedrIndex].u8CapPulseCount < 0xFF) {
@@ -297,50 +298,53 @@ void IrRecvCapture(uint8 u8SelectedrIndex,TIM_HandleTypeDef *pHtim, uint32 u32Cc
 
 void IrRecvDecode(uint8 u8SelectedrIndex)
 {
-	/* ¸üĞÂºìÍâÒ£¿ØÆ÷×´Ì¬ */
-	if(g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle) {							/* ¿ÕÏĞ×´Ì¬£¬²»×÷ÈÎºÎ´¦Àí */
-		g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount++;					/* Òç³öÒ»´Î */
-		if(g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount == 2) {			/* Òç³ö2´Î */
-			g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount = 0;				/* Òç³ö´ÎÊıÇåÁã */
-			g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle = FALSE;					/* ÕâÊÇÎª¿ÕÏĞ×´Ì¬ */
-			g_IRCtrl.DevComm[u8SelectedrIndex].bBtnRdyDecode = TRUE;			/* ÍêÕûµÄÒ»Ö¡²¶»ñÍê³É£¬Ó¦ÓÃÄÇ±ß¿ÉÒÔ½âÂëÁË */
+	/* æ›´æ–°çº¢å¤–é¥æ§å™¨çŠ¶æ€ */
+	if(g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle) {							/* ç©ºé—²çŠ¶æ€ï¼Œä¸ä½œä»»ä½•å¤„ç† */
+		g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount++;					/* æº¢å‡ºä¸€æ¬¡ */
+		if(g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount == 2) {			/* æº¢å‡º2æ¬¡ */
+			g_IRCtrl.DevComm[u8SelectedrIndex].u8TimerUpdatCount = 0;				/* æº¢å‡ºæ¬¡æ•°æ¸…é›¶ */
+			g_IRCtrl.DevComm[u8SelectedrIndex].bIsIdle = FALSE;					/* è¿™æ˜¯ä¸ºç©ºé—²çŠ¶æ€ */
+			g_IRCtrl.DevComm[u8SelectedrIndex].bBtnRdyDecode = TRUE;			/* å®Œæ•´çš„ä¸€å¸§æ•è·å®Œæˆï¼Œåº”ç”¨é‚£è¾¹å¯ä»¥è§£ç äº† */
 		}
 	}
 }
 
-/* ¼ÇÂ¼ºìÍâ¿ÕÏĞÒç³ö´ÎÊı£¬Èç¹û·Ç¿ÕÏĞÇÒÁ¬ĞøTIMÒç³ö¶ş´ÎÔò±ê¼ÇÎª¿É½âÂë */
+/* è®°å½•çº¢å¤–ç©ºé—²æº¢å‡ºæ¬¡æ•°ï¼Œå¦‚æœéç©ºé—²ä¸”è¿ç»­TIMæº¢å‡ºäºŒæ¬¡åˆ™æ ‡è®°ä¸ºå¯è§£ç  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *pHtim)
 {
     //ProcCap(htim0.Instance->CCR1, 0);
     //ProcCap(htim0.Instance->CCR1, 0);
-	if(TIM5 == pHtim->Instance) {							/* ËÙÂÊ100Hz */
-		/* ¸üĞÂºìÍâÒ£¿ØÆ÷×´Ì¬ */
+	if(TIM5 == pHtim->Instance) {							/* é€Ÿç‡100Hz */
+		/* æ›´æ–°çº¢å¤–é¥æ§å™¨çŠ¶æ€ */
 		IrRecvDecode(0);
 
-		/* ¸üĞÂÁíÍâÒ»±ßºìÍâÒ£¿ØÆ÷×´Ì¬ */ /* ÕâÁ½±ßµÄºìÍâÒªÍ¬Ê±¸úĞÂÃ»ÓĞÏÈºó */
+		/* æ›´æ–°å¦å¤–ä¸€è¾¹çº¢å¤–é¥æ§å™¨çŠ¶æ€ */ /* è¿™ä¸¤è¾¹çš„çº¢å¤–è¦åŒæ—¶è·Ÿæ–°æ²¡æœ‰å…ˆå */
 		IrRecvDecode(1);
 	}
 }
-
+static uint32 g_u32LeftAllCnt = 0;
+static uint32 g_u32RightAllCnt = 0;
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *pHtim)
 {
     if(pHtim->Instance == TIM1) {
-        if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {         /* ÓÒ²àÓĞË¢µç»ú·´À¡ */
+        if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {         /* å³ä¾§æœ‰åˆ·ç”µæœºåé¦ˆ */
             uint16 uCapTime = pHtim->Instance->CCR2;
             UniRecUDatToBuf((uDAT_UNI_REC*)&g_PulseCap[RIGHT_MOTOR_PulseNo], PULSE_CYCLE_BUF_LEN, uCapTime - g_PulseCap[RIGHT_MOTOR_PulseNo].uPulseEdge);
             g_PulseCap[RIGHT_MOTOR_PulseNo].uPulseEdge = uCapTime;
             g_MsrRes.uRightCount++;
-        } else if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {  /* ÎŞË¢µç»ú·´À¡ */
+            g_u32RightAllCnt++;
+        } else if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {  /* æ— åˆ·ç”µæœºåé¦ˆ */
             uint16 uCapTime = pHtim->Instance->CCR3;
             UniRecUDatToBuf((uDAT_UNI_REC*)&g_PulseCap[BUMP_MOTOR_PulseNo], PULSE_CYCLE_BUF_LEN, uCapTime - g_PulseCap[BUMP_MOTOR_PulseNo].uPulseEdge);
             g_PulseCap[BUMP_MOTOR_PulseNo].uPulseEdge = uCapTime;
-        } else if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_4) {  /* ×ó²àÓĞË¢µç»ú·´À¡ */
+        } else if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_4) {  /* å·¦ä¾§æœ‰åˆ·ç”µæœºåé¦ˆ */
             uint16 uCapTime = pHtim->Instance->CCR4;
             UniRecUDatToBuf((uDAT_UNI_REC*)&g_PulseCap[LEFT_MOTOR_PulseNo], PULSE_CYCLE_BUF_LEN, uCapTime - g_PulseCap[LEFT_MOTOR_PulseNo].uPulseEdge);
             g_PulseCap[LEFT_MOTOR_PulseNo].uPulseEdge = uCapTime;
             g_MsrRes.uLeftCount++;
+            g_u32LeftAllCnt++;
          }
-	} else if(TIM5 == pHtim->Instance) { /* ½«Á½¸öºìÍâ²¶»ñ */
+	} else if(TIM5 == pHtim->Instance) { /* å°†ä¸¤ä¸ªçº¢å¤–æ•è· */
 		if(pHtim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
 			IrRecvCapture(0, pHtim, pHtim->Instance->CCR2, TIM_CHANNEL_2);
 		}
@@ -351,19 +355,19 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *pHtim)
 	}
 }
 
-/* ¶ÔÓÚÂö³å²¶×½ĞÅºÅ½øĞĞ´¦Àí */
+/* å¯¹äºè„‰å†²æ•æ‰ä¿¡å·è¿›è¡Œå¤„ç† */
 float32 ProcPulseSig(uint8 u8PulseNo)
 {
-	/* Î¬»¤Âö³å±ßÑØ:ÓÉÓÚ²¶×½¶¨Ê±Æ÷½ö16bit£¬ÎªÁË±ÜÃâÒç³öÔì³ÉÂö³åÖÜÆÚ²âÁ¿²»×¼£¬ÔÚÃ»ÓĞÂö³åµÄÊ±ºò£¬²úÉúÒ»¸öĞé¼ÙµÄ"uPulseEdge" */
+	/* ç»´æŠ¤è„‰å†²è¾¹æ²¿:ç”±äºæ•æ‰å®šæ—¶å™¨ä»…16bitï¼Œä¸ºäº†é¿å…æº¢å‡ºé€ æˆè„‰å†²å‘¨æœŸæµ‹é‡ä¸å‡†ï¼Œåœ¨æ²¡æœ‰è„‰å†²çš„æ—¶å€™ï¼Œäº§ç”Ÿä¸€ä¸ªè™šå‡çš„"uPulseEdge" */
 	uint16 uCurTime = GetCapCurTime_1MHz();
 	UInt HwiKey = Hwi_disable();
-	if(uCurTime - g_PulseCap[u8PulseNo].uPulseEdge > PERIOD_CTR_TASK_ms*1000) {	/* Èç¹ûÔÚ×ª¶¯£¬Ò»¸ö¼ÆËãÖÜÆÚÄÚ£¬¿Ï¶¨»áÓĞÂö³å */
-		g_PulseCap[u8PulseNo].uPulseEdge = uCurTime - PERIOD_CTR_TASK_ms*1000;	/* ±ÜÃâÒç³ö */
+	if(uCurTime - g_PulseCap[u8PulseNo].uPulseEdge > PERIOD_CTR_TASK_ms*1000) {	/* å¦‚æœåœ¨è½¬åŠ¨ï¼Œä¸€ä¸ªè®¡ç®—å‘¨æœŸå†…ï¼Œè‚¯å®šä¼šæœ‰è„‰å†² */
+		g_PulseCap[u8PulseNo].uPulseEdge = uCurTime - PERIOD_CTR_TASK_ms*1000;	/* é¿å…æº¢å‡º */
 		InitUDatUniRec((uDAT_UNI_REC*)&g_PulseCap[u8PulseNo], PULSE_CYCLE_BUF_LEN);
 	}
 	Hwi_restore(HwiKey);
 
-	/* ½øĞĞ¼ÆËã */
+	/* è¿›è¡Œè®¡ç®— */
 	if(ProcUniRecUDatAsWave((uDAT_UNI_REC*)&g_PulseCap[u8PulseNo], PULSE_CYCLE_BUF_LEN, 20)) {
 		return CAP_CLK_FREQ_Hz/g_PulseCap[u8PulseNo].fSig_avr;
 	} else {
@@ -371,15 +375,43 @@ float32 ProcPulseSig(uint8 u8PulseNo)
 	}
 }
 
+
+float32 CalcForwardAccel(int16_t iAccX, int16_t iAccY, int16_t iAccZ,
+                               float q0, float q1, float q2, float q3,
+                               float fForwardX, float fForwardY, float fForwardZ)
+{
+
+    /* 1. åŸå§‹åŠ é€Ÿåº¦è½¬æ¢ä¸º float */
+    float ax = (float)iAccX;
+    float ay = (float)iAccY;
+    float az = (float)iAccZ;
+
+    /* 2. ä¼°è®¡é‡åŠ›åœ¨ä¼ æ„Ÿå™¨åæ ‡ç³»ä¸‹çš„åˆ†é‡ */
+    float gx = 2.0f * (q1*q3 - q0*q2);
+    float gy = 2.0f * (q0*q1 + q2*q3);
+    float gz = q0*q0 - q1*q1 - q2*q2 + q3*q3;
+
+    /* å‡è®¾ä¼ æ„Ÿå™¨è¾“å‡ºå•ä½å’Œé‡åŠ›ä¸€è‡´ï¼Œå¦‚æœä¸æ˜¯è¯·æŒ‰æ¯”ä¾‹è°ƒæ•´ */
+
+    /* 3. å»æ‰é‡åŠ› */
+    float ax_nograv = ax - gx * 9.81f;
+    float ay_nograv = ay - gy * 9.81f;
+    float az_nograv = az - gz * 9.81f;
+
+    /* 4. è®¡ç®—å‰è¿›æ–¹å‘åŠ é€Ÿåº¦ï¼ˆæŠ•å½±åˆ°å‰è¿›æ–¹å‘ï¼‰ */
+    return ax_nograv*fForwardX + ay_nograv*fForwardY + az_nograv*fForwardZ;
+}
+
 #include "BMI270.h"		/* IMU */
-/* ¸üĞÂIMUÁùÖáºÍ¼ÆËã×ËÌ¬Êı¾İ£¬ÍÓÂİÒÇÄÚ²¿Êä³öÆµÂÊ¿ÉÅäÖÃ·¶Î§ÊÇ0.02-1.6KHz£¬¿É¿ªÆôµÄµÍÍ¨ÂË²¨ÆµÂÊ·¶Î§ÊÇ5.5-751Hz*/
+#if 0
+/* æ›´æ–°IMUå…­è½´å’Œè®¡ç®—å§¿æ€æ•°æ®ï¼Œé™€èºä»ªå†…éƒ¨è¾“å‡ºé¢‘ç‡å¯é…ç½®èŒƒå›´æ˜¯0.02-1.6KHzï¼Œå¯å¼€å¯çš„ä½é€šæ»¤æ³¢é¢‘ç‡èŒƒå›´æ˜¯5.5-751Hz*/
 void UpdateIMU(void)
 {
-    /* ¸ù¾İÁùÖáÊı¾İ¼ÆËã×ËÊÆ½Ç¶ÈÊı¾İ */
-	Bmi270GetAcc();             /* »ñÈ¡ IMU660RA µÄ¼ÓËÙ¶È²âÁ¿ÊıÖµ */
-	Bmi270GetGyro();            /* »ñÈ¡ IMU660RA µÄ½ÇËÙ¶È²âÁ¿ÊıÖµ */
-	static float32 s_fQ0 = 1, s_fQ1 = 0, s_fQ2 = 0, s_fQ3 = 0;      /* ËÄÔªÊıµÄÔªËØ£¬´ú±í¹À¼Æ·½Ïò */
-	static float32 s_fExInt = 0, s_fEyInt = 0, s_fEzInt = 0;      /* °´±ÈÀıËõĞ¡»ı·ÖÎó²î */
+    /* æ ¹æ®å…­è½´æ•°æ®è®¡ç®—å§¿åŠ¿è§’åº¦æ•°æ® */
+	Bmi270GetAcc();             /* è·å– IMU660RA çš„åŠ é€Ÿåº¦æµ‹é‡æ•°å€¼ */
+	Bmi270GetGyro();            /* è·å– IMU660RA çš„è§’é€Ÿåº¦æµ‹é‡æ•°å€¼ */
+	static float32 s_fQ0 = 1, s_fQ1 = 0, s_fQ2 = 0, s_fQ3 = 0;      /* å››å…ƒæ•°çš„å…ƒç´ ï¼Œä»£è¡¨ä¼°è®¡æ–¹å‘ */
+	static float32 s_fExInt = 0, s_fEyInt = 0, s_fEzInt = 0;      /* æŒ‰æ¯”ä¾‹ç¼©å°ç§¯åˆ†è¯¯å·® */
 	int16 iGyrX = g_Bmi270Comm.iGyrX;
 	int16 iGyrY = g_Bmi270Comm.iGyrY;
 	int16 iGyrZ = g_Bmi270Comm.iGyrZ;
@@ -394,67 +426,92 @@ void UpdateIMU(void)
 		float32 fAy = iAccY;
 		float32 fAz = iAccZ;
 
-		/* ¼ÆËã¹éÒ»»¯Òò×Ó */
+		/* è®¡ç®—å½’ä¸€åŒ–å› å­ */
 		float32 fNorm = sqrtf(fAx * fAx + fAy * fAy + fAz * fAz);
 
 		if(fNorm != 0) {
-			fAx = fAx / fNorm;                   /* ¹éÒ»»¯ */
+
+			fAx = fAx / fNorm;                   /* å½’ä¸€åŒ– */
 			fAy = fAy / fNorm;
 			fAz = fAz / fNorm;
 
-			/* ¹À¼Æ·½ÏòµÄÖØÁ¦ */
+			/* ä¼°è®¡æ–¹å‘çš„é‡åŠ› */
 			float32 fVx = 2 * (s_fQ1 * s_fQ3 - s_fQ0 * s_fQ2);
 			float32 fVy = 2 * (s_fQ0 * s_fQ1 + s_fQ2 * s_fQ3);
 			float32 fVz = s_fQ0 * s_fQ0 - s_fQ1 * s_fQ1 - s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3;
 
-			/* ´íÎóµÄÁìÓòºÍ·½Ïò´«¸ĞÆ÷²âÁ¿²Î¿¼·½ÏòÖ®¼äµÄ½»²æ³Ë»ıµÄ×ÜºÍ */
+			/* é”™è¯¯çš„é¢†åŸŸå’Œæ–¹å‘ä¼ æ„Ÿå™¨æµ‹é‡å‚è€ƒæ–¹å‘ä¹‹é—´çš„äº¤å‰ä¹˜ç§¯çš„æ€»å’Œ */
 			float32 fEx = (fAy * fVz - fAz * fVy);
 			float32 fEy = (fAz * fVx - fAx * fVz);
 			float32 fEz = (fAx * fVy - fAy * fVx);
 
-			/* »ı·ÖÎó²î±ÈÀı»ı·ÖÔöÒæ */
+			/* ç§¯åˆ†è¯¯å·®æ¯”ä¾‹ç§¯åˆ†å¢ç›Š */
 			s_fExInt = s_fExInt + fEx * KI;
 			s_fEyInt = s_fEyInt + fEy * KI;
 			s_fEzInt = s_fEzInt + fEz * KI;
 
-			/* µ÷ÕûºóµÄÍÓÂİÒÇ²âÁ¿ */
+			/* è°ƒæ•´åçš„é™€èºä»ªæµ‹é‡ */
 			fGx = fGx + KP * fEx + s_fExInt;
 			fGy = fGy + KP * fEy + s_fEyInt;
 			fGz = fGz + KP * fEz + s_fEzInt;
 
-			/* ÕûºÏËÄÔªÊıÂÊºÍÕı³£»¯ */
-			s_fQ0 = s_fQ0 + (-s_fQ1 * fGx - s_fQ2 * fGy - s_fQ3 * fGz) * HALF_T;
-			s_fQ1 = s_fQ1 + (s_fQ0 * fGx + s_fQ2 * fGz - s_fQ3 * fGy) * HALF_T;
-			s_fQ2 = s_fQ2 + (s_fQ0 * fGy - s_fQ1 * fGz + s_fQ3 * fGx) * HALF_T;
-			s_fQ3 = s_fQ3 + (s_fQ0 * fGz + s_fQ1 * fGy - s_fQ2 * fGx) * HALF_T;
+			/* æ•´åˆå››å…ƒæ•°ç‡å’Œæ­£å¸¸åŒ– */
+			float32 q0 = s_fQ0;
+			float32 q1 = s_fQ1;
+			float32 q2 = s_fQ2;
+			float32 q3 = s_fQ3;
+			s_fQ0 = q0 + (-q1 * fGx - q2 * fGy - q3 * fGz) * HALF_T;
+			s_fQ1 = q1 + (q0 * fGx + q2 * fGz - q3 * fGy) * HALF_T;
+			s_fQ2 = q2 + (q0 * fGy - q1 * fGz + q3 * fGx) * HALF_T;
+			s_fQ3 = q3 + (q0 * fGz + q1 * fGy - q2 * fGx) * HALF_T;
 
-			/* ¼ÆËãËÄÔªÊıÏòÁ¿³¤¶È */
+			/* è®¡ç®—å››å…ƒæ•°å‘é‡é•¿åº¦ */
 			fNorm = sqrtf(s_fQ0 * s_fQ0 + s_fQ1 * s_fQ1 + s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3);
 
 			if(fNorm != 0) {
-				/* ¹éÒ»»¯ËÄÔªÊı */
+				/* å½’ä¸€åŒ–å››å…ƒæ•° */
 				s_fQ0 = s_fQ0 / fNorm;
 				s_fQ1 = s_fQ1 / fNorm;
 				s_fQ2 = s_fQ2 / fNorm;
 				s_fQ3 = s_fQ3 / fNorm;
-				/* Çı¶¯È«¾Ö±äÁ¿ */
+				/* é©±åŠ¨å…¨å±€å˜é‡ */
 				g_MsrRes.iGyroX = g_Bmi270Comm.iGyrX;
 				g_MsrRes.iGyroY = g_Bmi270Comm.iGyrY;
 				g_MsrRes.iGyroZ = g_Bmi270Comm.iGyrZ;
 				g_MsrRes.iAccX = g_Bmi270Comm.iAccX;
 				g_MsrRes.iAccY = g_Bmi270Comm.iAccY;
 				g_MsrRes.iAccZ = g_Bmi270Comm.iAccZ;
-				g_MsrRes.fPitch  = asinf(-2 * s_fQ1 * s_fQ3 + 2 * s_fQ0 * s_fQ2) * 57.3; /* pitch ,×ª»»Îª¶ÈÊı */
-				if(g_Bmi270Comm.iAccY > 0) {	/* °å×Ó×°·´ÁË */
+
+				/* è®¡ç®—é™€èºä»ªè§’åº¦ï¼š */
+				float32 R[3][3];
+				R[0][0] = 1 - 2 * s_fQ2 * s_fQ2 - 2 * s_fQ3 * s_fQ3;
+			    R[0][1] = 2 * s_fQ1 * s_fQ2 - 2*s_fQ0 * s_fQ3;
+			    R[0][2] = 2 * s_fQ1 * q3 + 2 * s_fQ0 * s_fQ2;
+
+			    R[1][0] = 2 * s_fQ1 * s_fQ2 + 2 * s_fQ0 * s_fQ3;
+			    R[1][1] = 1 - 2 * s_fQ1 * s_fQ1 - 2 * s_fQ3 * s_fQ3;
+			    R[1][2] = 2 * s_fQ2 * s_fQ3 - 2 * s_fQ0 * s_fQ1;
+
+			    R[2][0] = 2 * s_fQ1 * s_fQ3 - 2 * s_fQ0 * s_fQ2;
+			    R[2][1] = 2 * s_fQ2 * s_fQ3 + 2 * s_fQ0 * s_fQ1;
+			    R[2][2] = 1 - 2 * s_fQ1 * s_fQ1 - 2 * s_fQ2 * s_fQ2;
+				float32 ang_rad= atan2(R[1][0], R[0][0]);
+				g_MsrRes.fPitch = ang_rad * (180.0f / M_PI);
+			    g_MsrRes.u8TryCnt_IMU = 5;
+				return;
+
+				g_MsrRes.fPitch  = asinf(-2 * s_fQ1 * s_fQ3 + 2 * s_fQ0 * s_fQ2) * 57.3; /* pitch ,è½¬æ¢ä¸ºåº¦æ•° */
+
+				if(g_Bmi270Comm.iAccY > 0) {	/* æ¿å­è£…åäº† */
 					if(g_MsrRes.fPitch > 0) {
 						g_MsrRes.fPitch = 180 - g_MsrRes.fPitch;
 					} else {
 						g_MsrRes.fPitch = 0 - 180 - g_MsrRes.fPitch;
 					}
 				}
-				g_MsrRes.fPitch += 90;		/* ÕıÉÏ·½ÊÇ0¶È */
+				g_MsrRes.fPitch += 90;		/* æ­£ä¸Šæ–¹æ˜¯0åº¦ */
 			/*	if (g_MsrRes.fPitch < 0) {
-				    g_MsrRes.fPitch += 360; // Èç¹ûÊÇ¸ºÊı£¬Ôö¼Ó360¶È
+				    g_MsrRes.fPitch += 360; // å¦‚æœæ˜¯è´Ÿæ•°ï¼Œå¢åŠ 360åº¦
 				}*/
 				g_MsrRes.fRoll = atan2f(2 * s_fQ2 * s_fQ3 + 2 * s_fQ0 * s_fQ1, -2 * s_fQ1 * s_fQ1 - 2 * s_fQ2 * s_fQ2 + 1) * 57.3; /* roll */
 				g_MsrRes.u8TryCnt_IMU = 5;
@@ -462,14 +519,139 @@ void UpdateIMU(void)
 			}
 		}
 	}
-	/* Èç¹ûµ½ÕâÀï¾ÍËã´Ë´ÎÍ¨ĞÅÊ§°ÜÁË */
+	/* å¦‚æœåˆ°è¿™é‡Œå°±ç®—æ­¤æ¬¡é€šä¿¡å¤±è´¥äº† */
 	if(g_MsrRes.u8TryCnt_IMU) {
 		g_MsrRes.u8TryCnt_IMU--;
 	}
 }
+#else
+void UpdateIMU(void)
+{
+    /* æ ¹æ®å…­è½´æ•°æ®è®¡ç®—å§¿åŠ¿è§’åº¦æ•°æ® */
+	Bmi270GetAcc();             /* è·å– IMU660RA çš„åŠ é€Ÿåº¦æµ‹é‡æ•°å€¼ */
+	Bmi270GetGyro();            /* è·å– IMU660RA çš„è§’é€Ÿåº¦æµ‹é‡æ•°å€¼ */
+	static float32 s_fQ0 = 1, s_fQ1 = 0, s_fQ2 = 0, s_fQ3 = 0;      /* å››å…ƒæ•°çš„å…ƒç´ ï¼Œä»£è¡¨ä¼°è®¡æ–¹å‘ */
+	static float32 s_fExInt = 0, s_fEyInt = 0, s_fEzInt = 0;      	/* æŒ‰æ¯”ä¾‹ç¼©å°ç§¯åˆ†è¯¯å·® */
+	int16 iGyrX = g_Bmi270Comm.iGyrX;
+	int16 iGyrY = g_Bmi270Comm.iGyrY;
+	int16 iGyrZ = g_Bmi270Comm.iGyrZ;
+	int16 iAccX = g_Bmi270Comm.iAccX;
+	int16 iAccY = g_Bmi270Comm.iAccY;
+	int16 iAccZ = g_Bmi270Comm.iAccZ;
+	if(iGyrX && iGyrY && iGyrZ && iAccX && iAccY && iAccZ) {
 
-#include "BMP280.h"		/* ÆøÑ¹ */
-/* ¸üĞÂÆøÑ¹¼Æ */
+		 /* ========== 1. é‡ç¨‹ç¼©æ”¾ ========== */
+		// é™€èºä»ª (Â±2000 dps â†’ é™¤ä»¥ 16.4)
+		float32 fGx = (float)iGyrX / 16.4f * (M_PI / 180.0f); // è½¬æ¢æˆ rad/s
+		float32 fGy = (float)iGyrY / 16.4f * (M_PI / 180.0f);
+		float32 fGz = (float)iGyrZ / 16.4f * (M_PI / 180.0f);
+
+		// åŠ é€Ÿåº¦è®¡ (Â±2g â†’ é™¤ä»¥ 16384)
+		float32 fAx = iAccX / 16384.0f;
+		float32 fAy = iAccY / 16384.0f;
+		float32 fAz = iAccZ / 16384.0f;
+
+		/* ========== 2. å½’ä¸€åŒ–åŠ é€Ÿåº¦ (ç”¨äºé‡åŠ›æ–¹å‘) ========== */
+		float32 fNorm = sqrtf(fAx * fAx + fAy * fAy + fAz * fAz);		/* è®¡ç®—å½’ä¸€åŒ–å› å­ */
+		if(fNorm != 0) {
+			fAx = fAx / fNorm;                   /* å½’ä¸€åŒ– */
+			fAy = fAy / fNorm;
+			fAz = fAz / fNorm;
+			/* ä¼°è®¡æ–¹å‘çš„é‡åŠ› */
+			float32 fVx = 2.0f * (s_fQ1 * s_fQ3 - s_fQ0 * s_fQ2);
+			float32 fVy = 2.0f * (s_fQ0 * s_fQ1 + s_fQ2 * s_fQ3);
+			float32 fVz = s_fQ0 * s_fQ0 - s_fQ1 * s_fQ1 - s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3;
+
+			/* é”™è¯¯çš„é¢†åŸŸå’Œæ–¹å‘ä¼ æ„Ÿå™¨æµ‹é‡å‚è€ƒæ–¹å‘ä¹‹é—´çš„äº¤å‰ä¹˜ç§¯çš„æ€»å’Œ */
+			float32 fEx = (fAy * fVz - fAz * fVy);
+			float32 fEy = (fAz * fVx - fAx * fVz);
+			float32 fEz = (fAx * fVy - fAy * fVx);
+
+			/* ç§¯åˆ†è¯¯å·®æ¯”ä¾‹ç§¯åˆ†å¢ç›Š */
+			s_fExInt = s_fExInt + fEx * KI;
+			s_fEyInt = s_fEyInt + fEy * KI;
+			s_fEzInt = s_fEzInt + fEz * KI;
+
+			/* è°ƒæ•´åçš„é™€èºä»ªæµ‹é‡ */
+			fGx = fGx + KP * fEx + s_fExInt;
+			fGy = fGy + KP * fEy + s_fEyInt;
+			fGz = fGz + KP * fEz + s_fEzInt;
+
+			/* æ•´åˆå››å…ƒæ•°ç‡å’Œæ­£å¸¸åŒ– */
+			s_fQ0 = s_fQ0 + (-s_fQ1 * fGx - s_fQ2 * fGy - s_fQ3 * fGz) * HALF_T;
+			s_fQ1 = s_fQ1 + (s_fQ0 * fGx + s_fQ2 * fGz - s_fQ3 * fGy) * HALF_T;
+			s_fQ2 = s_fQ2 + (s_fQ0 * fGy - s_fQ1 * fGz + s_fQ3 * fGx) * HALF_T;
+			s_fQ3 = s_fQ3 + (s_fQ0 * fGz + s_fQ1 * fGy - s_fQ2 * fGx) * HALF_T;
+
+			/* è®¡ç®—å››å…ƒæ•°å‘é‡é•¿åº¦ */
+			fNorm = sqrtf(s_fQ0 * s_fQ0 + s_fQ1 * s_fQ1 + s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3);
+
+//			/* è®¡ç®—è§’åº¦ */
+//			float tx = -fAx;
+//			float ty = -fAy;
+//			float32 angle_deg;
+//			float tmag = sqrtf(tx*tx + ty*ty);
+//			if (tmag < 1e-3f) {
+//				// è¿”å›ä¸Šä¸€æ¬¡è§’åº¦ï¼Œæˆ– 0ï¼Œæˆ–ä»…é é™€èºç§¯åˆ†ï¼ˆè§ä¸‹èŠ‚ï¼‰
+//				// è¿™é‡Œå…ˆè¿”å› 0 ä½œå ä½
+//				g_MsrRes.fPitch = 0.0f;
+//			} else {
+//				float32 angle_rad = atan2f(tx, ty);  // æ³¨æ„å‚æ•°é¡ºåº (x, y)
+//				angle_deg = (angle_rad * (180.0f / (float)M_PI)) + 90.0f;
+//			}
+//			// è§’åº¦å®šä¹‰ï¼šç›¸å¯¹ +Y è½´ï¼Œæ­£ä¸Šä¸º 0Â°
+//			static float32 fGyrIntegral = 0;
+//			fGyrIntegral += (fGz * 0.01f);
+//			angle_deg = (1.0f - 0.05f) * fGyrIntegral + 0.05f * angle_deg;
+//
+//			// åŒ…åˆ° [-180, 180]
+//			if (angle_deg > 180.0f) angle_deg -= 360.0f;
+//			if (angle_deg < -180.0f) angle_deg += 360.0f;
+//
+//			fGyrIntegral = angle_deg;
+//
+//			g_MsrRes.fPitch = angle_deg;
+
+			if(fNorm != 0) {
+				/* å½’ä¸€åŒ–å››å…ƒæ•° */
+				s_fQ0 = s_fQ0 / fNorm;
+				s_fQ1 = s_fQ1 / fNorm;
+				s_fQ2 = s_fQ2 / fNorm;
+				s_fQ3 = s_fQ3 / fNorm;
+				/* é©±åŠ¨å…¨å±€å˜é‡ */
+				g_MsrRes.iGyroX = g_Bmi270Comm.iGyrX;
+				g_MsrRes.iGyroY = g_Bmi270Comm.iGyrY;
+				g_MsrRes.iGyroZ = g_Bmi270Comm.iGyrZ;
+				g_MsrRes.iAccX = g_Bmi270Comm.iAccX;
+				g_MsrRes.iAccY = g_Bmi270Comm.iAccY;
+				g_MsrRes.iAccZ = g_Bmi270Comm.iAccZ;
+
+				g_MsrRes.fPitch  = -asinf(-2 * s_fQ1 * s_fQ3 + 2 * s_fQ0 * s_fQ2) * 57.3; /* pitch ,è½¬æ¢ä¸ºåº¦æ•° */
+//				g_MsrRes.fPitch = asinf(2 * (s_fQ1 * s_fQ3 - s_fQ0 * s_fQ2)) * 180.0f / M_PI;
+
+				/* å°†æ“¦çª—æœºçš„æ–¹å‘æ‰©ä¸º[-180, 180] æ­£å·¦ä¸ºæ­£ï¼Œæ­£å³ä¸ºè´Ÿ */
+				if(g_Bmi270Comm.iAccY > 0) {	/* è§’åº¦åå³ */
+					g_MsrRes.fPitch = -90 + g_MsrRes.fPitch;
+				} else {	/* è§’åº¦åå·¦ */
+					g_MsrRes.fPitch = 90 - g_MsrRes.fPitch;
+				}
+//				g_MsrRes.fRoll = atan2f(2 * s_fQ2 * s_fQ3 + 2 * s_fQ0 * s_fQ1, -2 * s_fQ1 * s_fQ1 - 2 * s_fQ2 * s_fQ2 + 1) * 57.3; /* roll */
+//				g_MsrRes.fRoll = atan2f(2 * (s_fQ2 * s_fQ3 + s_fQ0 * s_fQ1), 1 - 2 * (s_fQ1 * s_fQ1 + s_fQ2 * s_fQ2)) * 180.0f / M_PI;
+//				g_MsrRes.fYaw = atan2f(2 * (s_fQ1 * s_fQ2 + s_fQ0 * s_fQ3), 1 - 2 * (s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3)) * 180.0f / M_PI;
+				g_MsrRes.u8TryCnt_IMU = 5;
+				return;
+			}
+		}
+	}
+	/* å¦‚æœåˆ°è¿™é‡Œå°±ç®—æ­¤æ¬¡é€šä¿¡å¤±è´¥äº† */
+	if(g_MsrRes.u8TryCnt_IMU) {
+		g_MsrRes.u8TryCnt_IMU--;
+	}
+}
+#endif
+
+#include "BMP280.h"		/* æ°”å‹ */
+/* æ›´æ–°æ°”å‹è®¡ */
 void UpdateAir(void)
 {
 	if(Bmp280GetAirAndTemp()) {
@@ -481,89 +663,91 @@ void UpdateAir(void)
 	}
 }
 
-/* ÓÉÓÚ²¶»ñµ½µÄÊ±ĞòÊÇÓĞÎó²îµÄ£¬ËùÒÔ³ÌĞò²»ÄÜÖ±½ÓÅĞ¶ÏÖµÊÇ·ñÏàµÈ£¬ËùÒÔÓÃ´Ëº¯ÊıÅĞ¶ÏÁ½¸öÖµÊÇ·ñ½Ó½ü£¬Ö»ĞèÒª½Ó½ü±ê×¼Öµ¼´¿É */
+/* ç”±äºæ•è·åˆ°çš„æ—¶åºæ˜¯æœ‰è¯¯å·®çš„ï¼Œæ‰€ä»¥ç¨‹åºä¸èƒ½ç›´æ¥åˆ¤æ–­å€¼æ˜¯å¦ç›¸ç­‰ï¼Œæ‰€ä»¥ç”¨æ­¤å‡½æ•°åˆ¤æ–­ä¸¤ä¸ªå€¼æ˜¯å¦æ¥è¿‘ï¼Œåªéœ€è¦æ¥è¿‘æ ‡å‡†å€¼å³å¯ */
 uint8 IsIrTimeCounterMatch(int16 iTimerCounter1, int16 iTimerCounter2)
 {
 	return (((iTimerCounter1 - iTimerCounter2) < 0) ? - (iTimerCounter1 - iTimerCounter2) : (iTimerCounter1 - iTimerCounter2)) < 300;	/* 300us */
 }
 
-/* ¸üĞÂHX1838ºìÍâÒ£¿ØÍ¨ĞÅ×´Ì¬ */
+/* æ›´æ–°HX1838çº¢å¤–é¥æ§é€šä¿¡çŠ¶æ€ */
 void UpdateIRCtrl(void)
 {
 	BOOL bSuccess = TRUE;
 	uint32 u32Key = Hwi_disable();
 
-	if(g_IRCtrl.DevComm[0].bBtnRdyDecode) { /* Èç¹ûÓĞ´ı½âÂëĞÅºÅ  ÓÅÏÈ²ÉÓÃÒ»ºÅÎ»µÄºìÍâ */
+	if(g_IRCtrl.DevComm[0].bBtnRdyDecode) { /* å¦‚æœæœ‰å¾…è§£ç ä¿¡å·  ä¼˜å…ˆé‡‡ç”¨ä¸€å·ä½çš„çº¢å¤– */
 		g_IRCtrl.u8SelectedrIndex = 0;
 	} else if(g_IRCtrl.DevComm[1].bBtnRdyDecode) {
 		g_IRCtrl.u8SelectedrIndex = 1;
 	}
-
-	if(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].bBtnRdyDecode) {		/* Èç¹ûÓĞ´ı½âÂëĞÅºÅ */
-		/* ½âÂëÖ¸ÁîÖ¡ */
+	if(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].bBtnRdyDecode) {		/* å¦‚æœæœ‰å¾…è§£ç ä¿¡å· */
+		/* è§£ç æŒ‡ä»¤å¸§ */
 		memcpy(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData, g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].rxFrame, IR_RX_SEQ_BLEN * 4);
 		g_IRCtrl.DevComm[1].bBtnRdyDecode = FALSE;
 		g_IRCtrl.DevComm[0].bBtnRdyDecode = FALSE;
 		Hwi_restore(u32Key);
 		if(IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[0], 9000)
 			&& IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[1], 4500))
-		{        /* 9ms + 4.5ms¼ì²âÇ°µ¼Âë */
+		{        /* 9ms + 4.5msæ£€æµ‹å‰å¯¼ç  */
 			uint8 u8BitIdx = 0;
 			uint8 i;
 			g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].uRepeatCount = 0;
-			for(i = 2; i < (IR_RX_SEQ_BLEN * 2); i++) {                                  				/* ¼ì²âÊı¾İ */
+			for(i = 2; i < (IR_RX_SEQ_BLEN * 2); i++) {                                  				/* æ£€æµ‹æ•°æ® */
 				if(!IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[i], 560)) {									/* 0.56ms */
 					bSuccess = FALSE;
 					break;
 				}
 				i++;
-				if(IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[i], 1680) || (g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[i] > 10000)) {	/* 1.68ms »ò´óÓÚ10ms  */
-					g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].data.u32AllData |= (0x80000000 >> u8BitIdx);                          		/* µÚu8BitIdxÎ»ÖÃ1 */
+				if(IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[i], 1680) || (g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[i] > 10000)) {	/* 1.68ms æˆ–å¤§äº10ms  */
+					g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].data.u32AllData |= (0x80000000 >> u8BitIdx);                          		/* ç¬¬u8BitIdxä½ç½®1 */
 					u8BitIdx++;
 				} else if(IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[i], 560)) {								/* 0.56ms */
-					g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].data.u32AllData &= ~(0x80000000 >> u8BitIdx);                         		/* µÚu8BitIdxÎ»Çå0 */
+					g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].data.u32AllData &= ~(0x80000000 >> u8BitIdx);                         		/* ç¬¬u8BitIdxä½æ¸…0 */
 					u8BitIdx++;
 				} else {
 					bSuccess = FALSE;
 					break;
 				}
 			}
-		} else if(IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[0], 9000)
+		} else if(g_IRCtrl.u8BtnPressing != IR_BTN_NONE	/* è¿™é‡Œæ˜¯ä¸ºäº†é˜²æ­¢è¯¯åˆ¤, å½“è¶…è¿‡æŒ‡å®šå»¶ç»­çŠ¶æ€æ—¶é—´æ—¶, å†æ¬¡æ¥æ”¶åˆ°é‡å¤ç ä¸åº”è¯¥å“åº”. */
+				&& IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[0], 9000)
 				&& IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[1], 2250)
 				&& IsIrTimeCounterMatch(g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].srcData[2], 560))
-		{	/* 9ms + 2.25ms + 0.56ms ÎªÖØ¸´Âë£¬¼´°´×¡²»ËÉÊÖ */
+		{	/* 9ms + 2.25ms + 0.56ms ä¸ºé‡å¤ç ï¼Œå³æŒ‰ä½ä¸æ¾æ‰‹ */
 			g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].uRepeatCount++;
 			bSuccess = TRUE;
 		} else {
-			bSuccess = FALSE;		/* Ç°µ¼Âë¼ì²â´íÎó */
+			bSuccess = FALSE;		/* å‰å¯¼ç æ£€æµ‹é”™è¯¯ */
 		}
 	} else {
-		/* ÔİÎŞ´ı½âÂëÖ¸ÁîÖ¡ */
+		/* æš‚æ— å¾…è§£ç æŒ‡ä»¤å¸§ */
 		Hwi_restore(u32Key);
 		bSuccess = FALSE;
 	}
 
     if(bSuccess) {
-		g_IRCtrl.u8BtnPressing = g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].data.bit.key_val;		/* Ê¹ÓÃµÄÊ±ºò£¬Ö±½Ó¸ù¾İ¼üÖµ½øĞĞÅĞ¶ÏßÂ */
-    	g_IRCtrl.u8TryCnt = 50;			/* ×´Ì¬ÑÓĞø500ms */
+		g_IRCtrl.u8BtnPressing = g_IRCtrl.DevComm[g_IRCtrl.u8SelectedrIndex].data.bit.key_val;		/* ä½¿ç”¨çš„æ—¶å€™ï¼Œç›´æ¥æ ¹æ®é”®å€¼è¿›è¡Œåˆ¤æ–­å‘— */
+    	g_IRCtrl.u8TryCnt = 50;			/* çŠ¶æ€å»¶ç»­500ms */
     } else if(g_IRCtrl.u8TryCnt) {
     	g_IRCtrl.u8TryCnt--;
-    } else { /* µ±Ã»ÓĞÑÓĞø×´Ì¬Ê±£¬½«°´ÏÂ×´Ì¬¹éÁã */
+    } else { /* å½“æ²¡æœ‰å»¶ç»­çŠ¶æ€æ—¶ï¼Œå°†æŒ‰ä¸‹çŠ¶æ€å½’é›¶ */
     	g_IRCtrl.u8BtnPressing = IR_BTN_NONE;
     }
 }
-/*ÓïÒôÄ£¿é***************************************************************************************/
+/*è¯­éŸ³æ¨¡å—***************************************************************************************/
 #include "queue.h"
 #define TTS_UART_NO	1
+#define MP3_UART_NO	1
+#define MP3_DEFAULT_VOLUME_VALUE			25		/* MP3æ¨¡å—é»˜è®¤éŸ³é‡å¤§å° */
 
 #define QUEUE_SIZE	10
 typedef struct {
-    uint32 u32Queue[QUEUE_SIZE];  	/* ¾²Ì¬Êı×é×÷Îª»º³åÇø */
-    uint8 u8DeqFront;               /* ¶ÓÍ·Ö¸Õë        */
-    uint8 u8EnqRear;                /* ¶ÓÎ²Ö¸Õë        */
-}CIRCULAR_QUEUE;					/* ÓÃÓÚ»º³åuint32ÀàĞÍµÄ»·ĞÎ¶ÓÁĞ */
+    uint32 u32Queue[QUEUE_SIZE];  	/* é™æ€æ•°ç»„ä½œä¸ºç¼“å†²åŒº */
+    uint8 u8DeqFront;               /* é˜Ÿå¤´æŒ‡é’ˆ        */
+    uint8 u8EnqRear;                /* é˜Ÿå°¾æŒ‡é’ˆ        */
+}CIRCULAR_QUEUE;					/* ç”¨äºç¼“å†²uint32ç±»å‹çš„ç¯å½¢é˜Ÿåˆ— */
 
-/* ³õÊ¼»¯»·ĞÎ¶ÓÁĞ  [Ïß³Ì°²È«] */
+/* åˆå§‹åŒ–ç¯å½¢é˜Ÿåˆ—  [çº¿ç¨‹å®‰å…¨] */
 void CirQueInit(CIRCULAR_QUEUE *queue) {
 	Swi_disable();
     queue->u8DeqFront = 0;
@@ -571,19 +755,19 @@ void CirQueInit(CIRCULAR_QUEUE *queue) {
     Swi_enable();
 }
 
-/* Èë¶Ó²Ù×÷ [Ïß³Ì°²È«]
- * bIgnoreDup£ºÊÇ·ñºöÂÔÖØ¸´£¬²»ºöÂÔÔò²éÕÒÏÂÊÇ·ñÒÑ¾­´æÔÚ£¬Èç´æÔÚÔò²»ÔÙ²åÈë */
+/* å…¥é˜Ÿæ“ä½œ [çº¿ç¨‹å®‰å…¨]
+ * bIgnoreDupï¼šæ˜¯å¦å¿½ç•¥é‡å¤ï¼Œä¸å¿½ç•¥åˆ™æŸ¥æ‰¾ä¸‹æ˜¯å¦å·²ç»å­˜åœ¨ï¼Œå¦‚å­˜åœ¨åˆ™ä¸å†æ’å…¥ */
 BOOL CirQueEnq(CIRCULAR_QUEUE *queue, uint32 u32EnqItem, BOOL bIgnoreDup) {
 	BOOL bRes = FALSE;
 	Swi_disable();
     uint8 next_rear = (queue->u8EnqRear + 1) % QUEUE_SIZE;
-    if (next_rear != queue->u8DeqFront) {  /* ¶ÓÁĞÎ´Âú */
+    if (next_rear != queue->u8DeqFront) {  /* é˜Ÿåˆ—æœªæ»¡ */
 		uint32 u32QueIndex = 0;
     	if (!bIgnoreDup) {
-			/* ¼ì²é¶ÓÁĞÖĞÊÇ·ñÒÑÓĞ¸ÃÔªËØ */
+			/* æ£€æŸ¥é˜Ÿåˆ—ä¸­æ˜¯å¦å·²æœ‰è¯¥å…ƒç´  */
 			for (u32QueIndex = queue->u8DeqFront; u32QueIndex != queue->u8EnqRear; u32QueIndex = (u32QueIndex + 1) % QUEUE_SIZE) {
 				if (queue->u32Queue[u32QueIndex] == u32EnqItem) {
-				    bRes = TRUE;		/* ºöÂÔÖØ¸´£¬²»Èë¶Ó */
+				    bRes = TRUE;		/* å¿½ç•¥é‡å¤ï¼Œä¸å…¥é˜Ÿ */
 				    break;
 				}
 			}
@@ -598,11 +782,11 @@ BOOL CirQueEnq(CIRCULAR_QUEUE *queue, uint32 u32EnqItem, BOOL bIgnoreDup) {
     return bRes;
 }
 
-/* ³ö¶Ó²Ù×÷, pDeqItemÓÉµ÷ÓÃÕßÈ·±£²»ÎªNULL [Ïß³Ì°²È«] */
+/* å‡ºé˜Ÿæ“ä½œ, pDeqItemç”±è°ƒç”¨è€…ç¡®ä¿ä¸ä¸ºNULL [çº¿ç¨‹å®‰å…¨] */
 BOOL CirQueDeq(CIRCULAR_QUEUE *pQue, uint32* pDeqItem) {
 	BOOL bRes = FALSE;
 	Swi_disable();
-    if (pQue->u8DeqFront != pQue->u8EnqRear) {  // ¶ÓÁĞ·Ç¿Õ
+    if (pQue->u8DeqFront != pQue->u8EnqRear) {  // é˜Ÿåˆ—éç©º
         uint32 item = pQue->u32Queue[pQue->u8DeqFront];
         pQue->u8DeqFront = (pQue->u8DeqFront + 1) % QUEUE_SIZE;
         *pDeqItem = item;
@@ -618,15 +802,96 @@ typedef struct {
 }TTS;
 TTS g_TTS;
 
-/* ¶ÓÁĞ³õÊ¼»¯ [Ïß³Ì°²È«] */
+/* é˜Ÿåˆ—åˆå§‹åŒ– [çº¿ç¨‹å®‰å…¨] */
 BOOL InitTtsSpeaking(void)
 {
 	OpenUartComm(TTS_UART_NO, 9600, 0, 100);
-	CirQueInit(&g_TTS.Que_Speaking);			/* ÓïÒôÄ£¿é²¥·Å¶ÓÁĞ */
+	CirQueInit(&g_TTS.Que_Speaking);			/* è¯­éŸ³æ¨¡å—æ’­æ”¾é˜Ÿåˆ— */
 	g_TTS.u32PlayingTick = 0;
 	return TRUE;
 }
-/* Èç¹û³É¹¦¼ÓÈë²¥·Å¶ÓÁĞÔò·µ»ØTRUE£¬Èç¹û¶ÓÁĞÒÑÂúÔò·µ»ØFALSE [Ïß³Ì°²È«] */
+/* =-==================æ–°å¢MP3æ¨¡å—ç›¸å…³================== */
+/* å‘é€æŒ‡ä»¤åˆ°Mp3ï¼Œå‚1ï¼šæŒ‡ä»¤ç±»å‹ã€‚å‚2ï¼šæ•°æ®ï¼Œå‚3ï¼šå“åº”æ•°æ®
+ * ç›®å‰ç”¨åˆ°çš„æŒ‡ä»¤å‘é€çš„æ•°æ®é•¿åº¦å’Œå“åº”æ•°æ®é•¿åº¦éƒ½æ˜¯2ï¼Œå› æ­¤ç”¨ä¸€ä¸ªuint16å°±å¤Ÿäº†ï¼ˆåç»­å¦‚æœæœ‰æ›´é•¿çš„å¯ä»¥ç”¨void*ï¼‰ */
+BOOL SendCmdToMp3(MP3_CMD eCmd, uint16 uValue, uint16 *pUResValue)
+{
+	uint8 *pStart = g_UartComm[MP3_UART_NO].u8TRBuf;
+	uint8 *pBuf = pStart;
+	*pBuf++ = 0xAA;		/* å›ºå®šå¸§å¤´ */
+	*pBuf++ = eCmd;		/* æŒ‡ä»¤ç±»å‹ */
+	uint8 u8SM = 0xAA + eCmd;	/* SMç (æ ¡éªŒç ) */
+	uint8 uResDataLen = 0;		/* æœŸæœ›å“åº”çš„æ•°æ®é•¿åº¦ */
+	pBuf++;						/* è·³è¿‡æ•°æ®é•¿åº¦ä½ */
+	switch(eCmd) {
+		case MP3_CMD_QUERY_STATE:			/* æŸ¥è¯¢æ’­æ”¾çŠ¶æ€(0~2: åœæ­¢/æ’­æ”¾/æš‚åœ) */
+			uResDataLen = 1;
+			break;
+		case MP3_CMD_PLAY:					/* æ’­æ”¾ */
+		case MP3_CMD_PAUSE:					/* æš‚åœ */
+		case MP3_CMD_STOP:					/* åœæ­¢ */
+		case MP3_CMD_VOLUME_UP:				/* éŸ³é‡åŠ  */
+		case MP3_CMD_VOLUME_DOWN:			/* éŸ³é‡å‡ */
+			break;
+		case MP3_CMD_SELECT_SONG_PLAY:		/* é€‰æ‹©æ›²ç›®æ’­æ”¾ */
+			pBuf[0] = uValue >> 8;
+			pBuf[1] = uValue;
+			u8SM += (pBuf[0] + pBuf[1]);
+			pBuf+=2;
+			break;
+		case MP3_CMD_SET_VOLUME:			/* è®¾ç½®éŸ³é‡(0~30) */
+			pBuf[0] = uValue;
+			u8SM += pBuf[0];
+			pBuf++;
+			break;
+		default:
+			return FALSE;
+	}
+	pStart[2] = pBuf - pStart - 3;		/* æ•°æ®é•¿åº¦ */
+	*pBuf++ = u8SM;
+	/* å‘é€å¸§ */
+	WriteToUart(MP3_UART_NO, pBuf - pStart);
+	if(uResDataLen) {	/* éœ€è¦å“åº”çš„ï¼Œç­‰å¾…æ¥æ”¶å“åº” */
+		uint16 uRecvLen = ReadFromUart(MP3_UART_NO, 10);
+		if(uRecvLen && (pStart[0] == 0xAA) && (pStart[0] == eCmd) && (pStart[2] == uResDataLen) && pUResValue) {
+			u8SM = 0;
+			for(uint16 i = 0; i < uRecvLen - 1; i++) {	/* è®¡ç®—æ ¡éªŒå’Œ */
+				u8SM += pStart[i];
+			}
+			if(u8SM != pStart[uRecvLen - 1]) {	/* æ ¡éªŒå’Œä¸é€šè¿‡ */
+				return FALSE;
+			}
+			if(uResDataLen == 1) {
+				*pUResValue = pStart[3];
+			} else {
+				*pUResValue = (pStart[3] << 8) | pStart[4];
+			}
+		} else {	/* éªŒè¯ä¸é€šè¿‡ */
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+/* ç«‹å³æ’­æ”¾æŒ‡å®šéŸ³é¢‘ */
+BOOL Mp3Speak(TTS_DIALOG_TYPE eDialogNo)
+{
+	/* å…ˆåœæ­¢æ­£åœ¨æ’­æ”¾çš„éŸ³é¢‘å†æ’­æ”¾. */
+	return SendCmdToMp3(MP3_CMD_STOP, 0, NULL) && SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, eDialogNo, NULL);
+}
+
+/* åˆå§‹åŒ–MP3æ¨¡å— */
+BOOL InitMp3Speaking(void)
+{
+	OpenUartComm(MP3_UART_NO, 9600, 0, 100);
+
+	/* é…ç½®MP3éŸ³é‡ */
+	SendCmdToMp3(MP3_CMD_SET_VOLUME, MP3_DEFAULT_VOLUME_VALUE, NULL);
+
+	return TRUE;
+}
+/* =-==================æ–°å¢MP3æ¨¡å—ç›¸å…³end================== */
+
+/* å¦‚æœæˆåŠŸåŠ å…¥æ’­æ”¾é˜Ÿåˆ—åˆ™è¿”å›TRUEï¼Œå¦‚æœé˜Ÿåˆ—å·²æ»¡åˆ™è¿”å›FALSE [çº¿ç¨‹å®‰å…¨] */
 BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup)
 {
 	return CirQueEnq(&g_TTS.Que_Speaking, DlgType, bIgnoreDup);
@@ -634,29 +899,29 @@ BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup)
 
 #include "MdlUARTnModbus.h"
 #define TTS_HEADER_LEN	5
-/* ¸üĞÂTTS [Ïß³Ì°²È«] */
+/* æ›´æ–°TTS [çº¿ç¨‹å®‰å…¨] */
 void UpdateTTS(void)
 {
 	uint32 u32CurrentReqType;
-	/* ´¦Àí¶ÓÁĞÖĞ´ı²¥·ÅµÄÇëÇó */
+	/* å¤„ç†é˜Ÿåˆ—ä¸­å¾…æ’­æ”¾çš„è¯·æ±‚ */
 	if(!g_TTS.u32PlayingTick && CirQueDeq(&g_TTS.Que_Speaking, &u32CurrentReqType)) {
-		/* v[0~16]:0ÀÊ¶ÁÒôÁ¿Îª¾²Òô£¬16ÀÊ¶ÁÒôÁ¿×î´ó£¬Ä¬ÈÏÊÇ10
-		  m[0~16]:0±³¾°ÒôÀÖÎª¾²Òô£¬16±³¾°ÒôÀÖÒôÁ¿×î´ó£¬Ä¬ÈÏÊÇ4
-		  t[0~5]:0ÀÊ¶ÁÓïËÙ×îÂı£¬5ÀÊ¶ÁÓïËÙ×î¿ì£¬Ä¬ÈÏÊÇ4*/
+		/* v[0~16]:0æœ—è¯»éŸ³é‡ä¸ºé™éŸ³ï¼Œ16æœ—è¯»éŸ³é‡æœ€å¤§ï¼Œé»˜è®¤æ˜¯10
+		  m[0~16]:0èƒŒæ™¯éŸ³ä¹ä¸ºé™éŸ³ï¼Œ16èƒŒæ™¯éŸ³ä¹éŸ³é‡æœ€å¤§ï¼Œé»˜è®¤æ˜¯4
+		  t[0~5]:0æœ—è¯»è¯­é€Ÿæœ€æ…¢ï¼Œ5æœ—è¯»è¯­é€Ÿæœ€å¿«ï¼Œé»˜è®¤æ˜¯4*/
 		uint8 *pBuf = g_UartComm[TTS_UART_NO].u8TRBuf;
 		const char* pHcData = cnst_TtsDialog[(TTS_DIALOG_TYPE)u32CurrentReqType];
 		uint8 u8HcLength = strlen(pHcData);
-		uint8 u8Encode = 1;					/* ÎÄ±¾±àÂë¸ñÊ½£¬0£ºGB2312£¬1£ºGBK£¬2£ºBIG5£¬3£ºUNICODE*/
-		uint8 u8Music = 0;					/* Ñ¡Ôñ±³¾°ÒôÀÖ(0£ºÎŞ±³¾°ÒôÀÖ  1-15£º±³¾°ÒôÀÖ¿ÉÑ¡)*/
+		uint8 u8Encode = 1;					/* æ–‡æœ¬ç¼–ç æ ¼å¼ï¼Œ0ï¼šGB2312ï¼Œ1ï¼šGBKï¼Œ2ï¼šBIG5ï¼Œ3ï¼šUNICODE*/
+		uint8 u8Music = 0;					/* é€‰æ‹©èƒŒæ™¯éŸ³ä¹(0ï¼šæ— èƒŒæ™¯éŸ³ä¹  1-15ï¼šèƒŒæ™¯éŸ³ä¹å¯é€‰)*/
 
-		/* ¹Ì¶¨Ö¡ĞÅÏ¢ */
-		*pBuf++ = 0xFD ; 					/* ¹¹ÔìÖ¡Í·FD*/
-		*pBuf++ = 0x00 ; 					/* ¹¹ÔìÊı¾İÇø³¤¶ÈµÄ¸ß×Ö½Ú*/
-		*pBuf++ = u8HcLength + 3; 			/* ¹¹ÔìÊı¾İÇø³¤¶ÈµÄµÍ×Ö½Ú£¬¼ÓÃüÁî×Ö¡¢ÃüÁî²ÎÊıºÍĞ£ÑéµÄÈı¸ö×Ö½Ú£¬Êı¾İÇø³¤¶È±ØĞëÑÏ¸ñÒ»ÖÂ*/
-		*pBuf++ = 0x01 ; 					/* ¹¹ÔìÃüÁî×Ö£ººÏ³É²¥·ÅÃüÁî*/
-		*pBuf++ = u8Encode | u8Music << 4 ; /* ¹¹ÔìÃüÁî²ÎÊı£º±àÂë¸ñÊ½Éè¶¨£¬±³¾°ÒôÀÖÉè¶¨*/
+		/* å›ºå®šå¸§ä¿¡æ¯ */
+		*pBuf++ = 0xFD ; 					/* æ„é€ å¸§å¤´FD*/
+		*pBuf++ = 0x00 ; 					/* æ„é€ æ•°æ®åŒºé•¿åº¦çš„é«˜å­—èŠ‚*/
+		*pBuf++ = u8HcLength + 3; 			/* æ„é€ æ•°æ®åŒºé•¿åº¦çš„ä½å­—èŠ‚ï¼ŒåŠ å‘½ä»¤å­—ã€å‘½ä»¤å‚æ•°å’Œæ ¡éªŒçš„ä¸‰ä¸ªå­—èŠ‚ï¼Œæ•°æ®åŒºé•¿åº¦å¿…é¡»ä¸¥æ ¼ä¸€è‡´*/
+		*pBuf++ = 0x01 ; 					/* æ„é€ å‘½ä»¤å­—ï¼šåˆæˆæ’­æ”¾å‘½ä»¤*/
+		*pBuf++ = u8Encode | u8Music << 4 ; /* æ„é€ å‘½ä»¤å‚æ•°ï¼šç¼–ç æ ¼å¼è®¾å®šï¼ŒèƒŒæ™¯éŸ³ä¹è®¾å®š*/
 
-		/* Ğ£ÑéÂë¼ÆËã */
+		/* æ ¡éªŒç è®¡ç®— */
 		int8 i = 0;
 		uint8 u8Ecc = 0;
 		for(i = 0; i < TTS_HEADER_LEN; i++) {
@@ -666,22 +931,22 @@ void UpdateTTS(void)
 			u8Ecc ^= pHcData[i];
 		}
 
-		/* Æ´½ÓÖ¡ */
+		/* æ‹¼æ¥å¸§ */
 		PrintStringNoOvChk(&pBuf, pHcData);
 		*pBuf++ = u8Ecc;
 
-		/* ·¢ËÍÖ¡ */
+		/* å‘é€å¸§ */
 		WriteToUart(TTS_UART_NO, TTS_HEADER_LEN + u8HcLength + 1);
 
-		/* µÈ´ıÑÓÊ± */
-		g_TTS.u32PlayingTick = 100 * 5;		/* ´óÔ¼µÈ5sµÄtick */
+		/* ç­‰å¾…å»¶æ—¶ */
+		g_TTS.u32PlayingTick = 100 * 5;		/* å¤§çº¦ç­‰5sçš„tick */
 	}
 	if(g_TTS.u32PlayingTick) {
 		g_TTS.u32PlayingTick--;
 	}
 }
 
-/* ¿ØÖÆµÆĞ§£¬ u32LedsGpioToWrite£ºÒªĞ´ÈëµÄled,Ö§³ÖÓë²Ù×÷ÒÔÊµÏÖ»ìÉ« */
+/* æ§åˆ¶ç¯æ•ˆï¼Œ u32LedsGpioToWriteï¼šè¦å†™å…¥çš„led,æ”¯æŒä¸æ“ä½œä»¥å®ç°æ··è‰² */
 void ControlLed(uint32 u32LedsToWrite)
 {
 	GPIO_write(GREEN_LED_DOutNo, ((u32LedsToWrite & LED_COLOR_GREEN) != 0));

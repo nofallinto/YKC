@@ -162,12 +162,14 @@ BOOL Bmi270Init(void)
 		if(ReadDatFromBmi270(BMI270_INT_STA | BMI270_SPI_R, u8Buf, 2) && (u8Buf[1] != 0)) {/* 检查是否配置完成 */
 			u8Buf[0] = 0x0E;
 			ReadDatFromBmi270(BMI270_PWR_CTRL | BMI270_SPI_W, u8Buf, 1);      /* 开启性能模式  使能陀螺仪、加速度、温度传感器 */
+//			u8Buf[0] = (1 << 7) | (0x03 << 4) | 0x0;			/* 0xA7 */
 			u8Buf[0] = 0xA7;
 			WriteDatToBmi270(BMI270_ACC_CONF | BMI270_SPI_W, u8Buf, 1);       /* 加速度采集配置 性能模式 正常采集 50Hz 采样频率,如果要提高到200也需要A9，但是会损失精度 */
+//			u8Buf[0] = (1 << 7) | (1 << 6) | (0x00 << 4) | 0x08;		/* 0xA9 */
 			u8Buf[0] = 0xA9;
 			WriteDatToBmi270(BMI270_GYR_CONF | BMI270_SPI_W, u8Buf, 1);       /* 陀螺仪采集配置 性能模式 正常采集 200Hz采样频率 */
 			u8Buf[0] = BMI270_ACC_SAMPLE;
-			WriteDatToBmi270(BMI270_ACC_RANGE | BMI270_SPI_W, u8Buf, 1);   	  /* 加速度量程配置 配置量程为:±8g */
+			WriteDatToBmi270(BMI270_ACC_RANGE | BMI270_SPI_W, u8Buf, 1);   	  /* 加速度量程配置 配置量程为:±2g */
 			u8Buf[0] = BMI270_GYR_SAMPLE;
 			WriteDatToBmi270(BMI270_GYR_RANGE | BMI270_SPI_W, u8Buf, 1);   	  /* 陀螺仪量程配置 配置量程为:±2000dps */
 

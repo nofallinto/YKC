@@ -32,7 +32,10 @@
 #if !SUPPORT_ETHERNET
 
 /*------------------调试使用------------------*/
-#define DEBUG_GPRS_UART_INFO	TRUE		/* 打开GPRS通信时的调试信息 */
+#define DEBUG_GPRS_UART_INFO		FALSE		/* 打开GPRS通信时的调试信息 */
+#define USE_GPRS_02G_14G			0			/* 使用GPRS模块类型 0：2G，1：4G */
+#define GPRS_SIMCARD_OPERATOR_APN	"CMNET"		/* 运营商的APN, 移动：CMNET, 联通：3gnet/uninet, 电信：CTNET */
+#define GPRS_CONTEXT_TYPE			1			/* 协议类型, 1：IPv4, 2：IPv6, 3：IPv4v6 */
 /*------------------end------------------*/
 
 struct in_addr {
@@ -79,7 +82,7 @@ typedef struct {
 
 #define GPRS_UART_PORT				2			/* 模块端口*/
 
-#define MAX_GPRS_SOCKET_NUM			6
+#define MAX_GPRS_SOCKET_NUM			6			/* 2G模块6个, 4G模块12个 */
 
 typedef enum {
 	GPRS_SUC 			= 0,
@@ -89,7 +92,7 @@ typedef enum {
 	GPRS_ERR_PARSE		= -4,
 	GPRS_ERR_UART_ABN	= -5,
 	GPRS_ERR_CONNECTION_ABN	= -6,
-	GPRS_ERR_NO_DATA	= -7
+	GPRS_ERR_NO_RESP	= -7		/* 设备无响应, 就是发送指令什么都没收到 */
 }GPRS_RES;
 
 typedef enum {
@@ -111,11 +114,16 @@ typedef enum {
 typedef struct {
 	uint32				protocl;
 	uint32				pTRBufMaxLen;
-	GPRS_RES			u8Res;			/* gprs结果*/
+	GPRS_RES			u8Res;			/* gprs结果 */
+	BOOL				bIsConnect;		/* 是否在连接中 */
 	BOOL 				bIsFree;
 	uint8 				u8MuxId;
 	struct sockaddr* 	name;
 	const char*			pServer;
+	uint16 uSendTimeoutMs;		/* 发送超时时间 */
+	uint16 uRecvTimeoutMs;		/* 接收超时时间(这个超时时间仅仅是规定时间内没有接收到数据才会返回. 如果接收到数据会一直接收, 即使超时也会继续接收.) */
+	uint32 u32UnreadBLen;		/* 未读取的长度 */
+	uint32 u32LastQirdiIndex;	/* 最近收到的QIRDI编号初始化成0, 编号从1开始 */
 }GPRS_SOCKET;
 
 typedef struct {
@@ -126,14 +134,25 @@ typedef struct {
 }GPRS_COMM;
 EXT GPRS_COMM g_GprsComm;		/* 不能放Not_ZeroInit */
 
-#define RING_BUFFER_MAX_SIZE		1024		/* 环形缓冲区大小, 要足够大. 否则如果不及时读会覆盖旧数据导致数据错乱 */
+#define RING_BUFFER_MAX_SIZE		300		/* 环形缓冲区大小, 要足够大. 否则如果不及时读会覆盖旧数据导致数据错乱 */
 typedef struct {	/* 用于保存从GPRS接收的数据的环形缓冲区 */
     uint8 aU8Buffer[RING_BUFFER_MAX_SIZE];    	/* 缓冲区指针 */
     uint16 uHead;      /* 头指针 */
     uint16 uRear;      /* 尾指针 */
 }RingBuffer_t;
-EXT RingBuffer_t g_GPRSRingBuffer;	/* GPRS的环形队列 */
 
+/*---------------GPRS接收双缓冲区---------------*/
+#define GPRS_UART_RX_DOUBLE_BUFF_MAX_LEN		128		/* gprs的串口接收双缓冲区buff大小 */
+typedef struct {
+	uint8 aU8RxBufA[GPRS_UART_RX_DOUBLE_BUFF_MAX_LEN];
+	uint8 aU8RxBufB[GPRS_UART_RX_DOUBLE_BUFF_MAX_LEN];
+	uint8 *pU8CurrentBuf;
+	uint8 *pU8NextBuf;
+}UART_DoubleBuff_t;
+
+/*---------------end---------------*/
+
+EXT RingBuffer_t g_GPRSRingBuffer;	/* GPRS的环形队列 */
 /*---------------环形缓冲区相关函数声明---------------*/
 void RingBuffer_Init(RingBuffer_t *pRingBuffer);		/* 初始化 */
 void RingBuffer_Write(RingBuffer_t *pRingBuffer, const uint8 *cnst_pU8Data, uint16 uLen);	/* 写数据, 缓冲区满了会覆盖旧数据 */
@@ -145,6 +164,7 @@ BOOL GPRS_WaitSocketIdle(SOCKET SocketId, uint32 u32MaxNAcked, uint8 u8MaxStuckC
 uint16 GPRS_GetUnsentBLen(SOCKET SocketId);						/* 获取指定socket未发送的字节数 */
 uint16 StrRemoveHashData(uint8 *pSrc, uint16 uDataLen);			/* 去除掉无用的数据 */
 uint8 GPRS_GetSigStrong(void);									/* 获取GPRS信号强度 */
+void DMA_ReStart(DMA_HandleTypeDef *hdma);						/* 重新启动DMA */
 /*---------------end---------------*/
 
 /*---------------GPRS 网络通信相关函数---------------*/

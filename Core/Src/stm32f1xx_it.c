@@ -22,6 +22,8 @@
 #include "stm32f1xx_it.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "MdlGprs.h"
+#include "MdlUARTnModbus.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -226,6 +228,7 @@ void DMA1_Channel2_IRQHandler(void)
 /**
   * @brief This function handles DMA1 channel3 global interrupt.
   */
+
 void DMA1_Channel3_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel3_IRQn 0 */
@@ -257,7 +260,15 @@ void DMA1_Channel4_IRQHandler(void)
 void DMA1_Channel5_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel5_IRQn 0 */
-
+//	if(__HAL_DMA_GET_FLAG(&hdma_usart1_rx, DMA_FLAG_HT5)) { /* 半完成时队首指针一定在前面 */
+//		__HAL_DMA_CLEAR_FLAG(&hdma_usart1_rx, DMA_FLAG_HT5);
+//		uint16 uRecvLen = RING_BUFFER_MAX_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);
+//		g_UartComm[GPRS_UART_PORT].bUartIdleFlag = FALSE;	/* 说明还有数据在接收中, read函数应该等待数据接收完成再读 */
+//	} else if(__HAL_DMA_GET_FLAG(&hdma_usart1_rx, DMA_FLAG_TC5)) { // 传输完成标志, 需要立即重启DMA.
+//		__HAL_DMA_CLEAR_FLAG(&hdma_usart1_rx, DMA_FLAG_TC5);
+//		DMA_ReStart(&hdma_usart1_rx);						/* 重新启动DMA并且处理数据 */
+//		g_UartComm[GPRS_UART_PORT].bUartIdleFlag = FALSE;	/* 说明还有数据在接收中, read函数应该等待数据接收完成再读 */
+//	}
   /* USER CODE END DMA1_Channel5_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_usart1_rx);
   /* USER CODE BEGIN DMA1_Channel5_IRQn 1 */
@@ -312,7 +323,18 @@ void SPI1_IRQHandler(void)
 void USART1_IRQHandler(void)
 {
   /* USER CODE BEGIN USART1_IRQn 0 */
-
+	if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_IDLE)) {
+		__HAL_UART_CLEAR_IDLEFLAG(&huart1);
+//		DMA_ReStart(&hdma_usart1_rx);		/* 重新启动DMA并且处理数据 */
+		/* 更新队尾指针 */
+		g_GPRSRingBuffer.uRear = (RING_BUFFER_MAX_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx)) % RING_BUFFER_MAX_SIZE;
+//		g_UartComm[GPRS_UART_PORT].bUartIdleFlag = TRUE;		/* 数据接收完成 */
+	}
+	if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_FE)) {	/* 发生帧错误, 这帧数据可能不能要了 */
+		__HAL_UART_CLEAR_FEFLAG(&huart1);
+//		OpenUartComm(GPRS_UART_PORT, 115200, 0, 30);	/* 重新打开串口 */
+		/* 将 */
+	}
   /* USER CODE END USART1_IRQn 0 */
   HAL_UART_IRQHandler(&huart1);
   /* USER CODE BEGIN USART1_IRQn 1 */

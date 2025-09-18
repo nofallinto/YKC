@@ -86,8 +86,9 @@ typedef enum {
 //	uint8 u8LessLen;	/* 剩余长度 */
 //}GPRS_MqttNewAdd;
 typedef struct {
-	BOOL bSentPingFlag;		/* 已经发送过PING包标志位 */
-	uint16 uRecvPingRespCnt;	/* 接收PING包响应倒计时 */
+	BOOL bSentPingFlag;				/* 已经发送过PING包标志位 */
+	uint16 uTmr_RecvPingResp_ms;	/* 接收PING包响应倒计时 */
+	uint16 uTimer_SendPing_ms;		/* 发送PING包间隔时间 */
 }GPRS_MqttNewAdd;
 typedef struct {
 	uint32 u32SerialNo;

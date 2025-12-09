@@ -37,7 +37,6 @@ const SECTION(".softver") uint32 g_u32SoftVer = (uint32)SOFTWARE_VER | (((uint32
 /***************************************************************************
 						internal functions declaration
 ***************************************************************************/
-uint32* GetCounterpartAddr(uint32 *pVal);
 SECTION(".BootSection") void Reset_Handler(void)
 {
 	__disable_irq();
@@ -281,9 +280,9 @@ uint32* GetCounterpartAddr(uint32 *pVal)
 	}
 }
 
-uint32 GetVolatileFromU32Addr(const uint32 *pU32Val)
+uint32 GetVolatileFromU32Addr(volatile const uint32 *pU32Val)
 {
-	return (*(volatile uint32*)pU32Val);
+	return *pU32Val;
 }
 
 /* 获得flash里面的软件版本 */
@@ -998,13 +997,6 @@ extern UART_HandleTypeDef huart1;
 //};
 ///*---------------end---------------*/
 
-/* 初始化双缓冲区 */
-void DoubleBuff_Init(UART_DoubleBuff_t *pDoubleBuff)
-{
-	pDoubleBuff->pU8CurrentBuf = pDoubleBuff->aU8RxBufA;
-	pDoubleBuff->pU8NextBuf = pDoubleBuff->aU8RxBufB;
-}
-
 //uint8 aU8GPRS_Buff[UART_TR_BUF_BLEN] = {0};
 void OpenUartComm(uint8 u8Port, uint32 u32Baud, uint8 u8Parity_0Nul_1Odd_2Even, uint16 uReadTickOut_0Default)
 {
@@ -1032,13 +1024,12 @@ void OpenUartComm(uint8 u8Port, uint32 u32Baud, uint8 u8Parity_0Nul_1Odd_2Even, 
         Error_Handler();
     }
 
-    if(u8Port == GPRS_UART_PORT) {	/* GPRS通信使用DMA循环接收 */
-    	g_GPRSRingBuffer.uHead = g_GPRSRingBuffer.uRear = (RING_BUFFER_MAX_SIZE - __HAL_DMA_GET_COUNTER(g_UartComm[u8Port].Handle->hdmarx)) % RING_BUFFER_MAX_SIZE;
-//    	RingBuffer_Init(&g_GPRSRingBuffer);
-//    	HAL_UART_DMAStop(g_UartComm[u8Port].Handle);		/* 停止DMA */
-    	HAL_UART_Receive_DMA(g_UartComm[u8Port].Handle, g_GPRSRingBuffer.aU8Buffer, RING_BUFFER_MAX_SIZE);	/* 开始循环接收 */
+    /* 这里直接启动DMA。如果在ReadFromUart函数中启动的话，可能会漏掉前一两个字节, 在IDLE中断中接收完一帧数据都要重新启动DMA.
+     * （即使这样在通信特别频繁，通信数据量特别大的情况下也会有概率漏掉前面一两个字节，这种情况可以使用循环模式，DMA不会重新启动.） */
+    if(g_UartComm[u8Port].bIsUseDMAModeRx) {	/* 使用DMA模式接收 */
+		HAL_UARTEx_ReceiveToIdle_DMA(g_UartComm[u8Port].Handle, g_UartComm[u8Port].u8TRBuf, UART_TR_BUF_BLEN);
+		g_UartComm[u8Port].uHead = g_UartComm[u8Port].uRear = (UART_TR_BUF_BLEN - __HAL_DMA_GET_COUNTER(g_UartComm[u8Port].Handle->hdmarx)) % UART_TR_BUF_BLEN;
     }
-
 	/* 清除Sem：注，初始化的时候，SEM好像就已经有了，奇怪 */
 	osSemaphoreWait(g_UartComm[u8Port].Sem_TxCplt, 0);
 	osSemaphoreWait(g_UartComm[u8Port].Sem_RxGet, 0);
@@ -1048,12 +1039,17 @@ void OpenUartComm(uint8 u8Port, uint32 u32Baud, uint8 u8Parity_0Nul_1Odd_2Even, 
 #if !CIH_UART_DRV
 void WriteToUart(uint8 u8Port, uint16 uNeedTxByte)
 {
-	HAL_UART_Transmit(g_UartComm[u8Port].Handle, g_UartComm[u8Port].u8TRBuf, uNeedTxByte, 500);
-#if DEBUG_GPRS_UART_INFO
-	if(u8Port == GPRS_UART_PORT) {
-		HAL_UART_Transmit(g_UartComm[0].Handle, g_UartComm[u8Port].u8TRBuf, uNeedTxByte, 500);
+//	UART_COMM* pUartComm;
+	if(g_UartComm[u8Port].bIsUseDMAModeTx) {	/* 使用DMA发送 */
+		HAL_UART_Transmit_DMA(g_UartComm[u8Port].Handle, g_UartComm[u8Port].u8TRBuf, uNeedTxByte);
+	} else {
+		HAL_UART_Transmit(g_UartComm[u8Port].Handle, g_UartComm[u8Port].u8TRBuf, uNeedTxByte, 500);
 	}
-#endif
+	if(g_DebugConf.u8GprsDebugSwitch) {
+		if(u8Port == GPRS_UART_PORT) {
+			HAL_UART_Transmit(g_UartComm[0].Handle, g_UartComm[u8Port].u8TRBuf, uNeedTxByte, 500);
+		}
+	}
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
@@ -1070,56 +1066,60 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 uint16 ReadFromUart(uint8 u8Port, uint16 uIniWaitTime_ms)
 {
+//	return 0;
 	uint16 uRxBufPt = 0;
-	uint8 *pU8Buf = g_UartComm[u8Port].u8TRBuf + g_UartComm[u8Port].uRxFrameIndex;
-	uint16 uMaxLen = UART_TR_BUF_BLEN - g_UartComm[u8Port].uRxFrameIndex;	/* 可以读取的最大字节数 */
-	if(u8Port == GPRS_UART_PORT) {	/* 与GPRS通信时才用到环形缓冲区 */
-		while(uIniWaitTime_ms--) {
-			if((uRxBufPt = RingBuffer_Read(&g_GPRSRingBuffer, pU8Buf, uMaxLen))
-			&& (uRxBufPt = StrRemoveHashData(pU8Buf, uRxBufPt)) != 0) {		/* 检查并解析带IRQI的帧 */
-				break;
-			} else {
-				Task_sleep(1);
-			}
+	UART_COMM *pUartComm = &g_UartComm[u8Port];
+	uint8 *pU8Buf = pUartComm->u8TRBuf;
+	if(g_UartComm[u8Port].bIsUseDMAModeRx) {	/* 使用DMA接收 */
+		if(osSemaphoreWait(pUartComm->Sem_RxGet, uIniWaitTime_ms) == osOK) {	/* 等待接收完成(IDLE认为是接收完成) */
+			uRxBufPt = (pUartComm->uRear - pUartComm->uHead + UART_TR_BUF_BLEN) % UART_TR_BUF_BLEN;
+		} else {		/* 接收超时 */
+
 		}
-	} else {
-		HAL_UART_Receive(g_UartComm[u8Port].Handle, pU8Buf, uMaxLen, uIniWaitTime_ms);
+	} else {	/* 普通接收 */
+//		HAL_UART_Receive(pUartComm->Handle, pU8Buf, UART_TR_BUF_BLEN, uIniWaitTime_ms);
+		HAL_UARTEx_ReceiveToIdle(pUartComm->Handle, pU8Buf, UART_TR_BUF_BLEN, &uRxBufPt, uIniWaitTime_ms);
 	}
 
-#if DEBUG_GPRS_UART_INFO
-	if((u8Port == GPRS_UART_PORT) && uRxBufPt) {
-		HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)"【", 2, 300);
-		HAL_UART_Transmit(g_UartComm[0].Handle, g_UartComm[u8Port].u8TRBuf, uRxBufPt + g_UartComm[GPRS_UART_PORT].uRxFrameIndex, 300);
-		HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)"】", 2, 300);
+	if(g_DebugConf.u8GprsDebugSwitch) {
+		uint16 uRear = pUartComm->uRear;
+		if((u8Port == GPRS_UART_PORT) && uRxBufPt) {
+			HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)"【", 2, 300);
+			if(pUartComm->uHead <= uRear) {
+				HAL_UART_Transmit(g_UartComm[0].Handle, pUartComm->u8TRBuf + pUartComm->uHead, uRxBufPt, 300);
+			} else {
+				HAL_UART_Transmit(g_UartComm[0].Handle, pUartComm->u8TRBuf + pUartComm->uHead, UART_TR_BUF_BLEN - pUartComm->uHead, 300);
+				HAL_UART_Transmit(g_UartComm[0].Handle, pUartComm->u8TRBuf, pUartComm->uRear, 300);
+			}
+			HAL_UART_Transmit(g_UartComm[0].Handle, (uint8 *)"】", 2, 300);
+		}
 	}
-#endif
+	pUartComm->uRxBufPt = uRxBufPt;
 	return uRxBufPt;
 }
 
-//void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
-//{
-//	if((HAL_UART_RXEVENT_IDLE == HAL_UARTEx_GetRxEventType(huart)) || (HAL_UART_RXEVENT_TC == HAL_UARTEx_GetRxEventType(huart))) {		/* 当DMA缓冲满时发完，不会触发IDLE，所以两个中断事件都要监听 */
-//		if(huart == g_UartComm[GPRS_UART_PORT].Handle) {
-//			g_UartComm[GPRS_UART_PORT].uRxBufPt = Size;
-//			/* 先启动DMA防止丢失数据 */
-//			if(HAL_UARTEx_ReceiveToIdle_DMA(huart, g_GPRS_DoubleBuffer.pU8NextBuf, GPRS_UART_RX_DOUBLE_BUFF_MAX_LEN) == HAL_BUSY) {
-//				/* DMA启动失败, 一般不会进来, 但是程序偶尔会有与GPRS通信不上的情况. 怀疑是DMA没启动如果启动失败就再启动一次. */
-//				HAL_UARTEx_ReceiveToIdle_DMA(huart, g_GPRS_DoubleBuffer.pU8NextBuf, GPRS_UART_RX_DOUBLE_BUFF_MAX_LEN);
-//			}
-//			RingBuffer_Write(&g_GPRSRingBuffer, g_GPRS_DoubleBuffer.pU8CurrentBuf, Size);	/* 写入环形缓冲区 */
-//			/* 交换指针 */
-//			uint8 *pU8Ptr = g_GPRS_DoubleBuffer.pU8CurrentBuf;
-//			g_GPRS_DoubleBuffer.pU8CurrentBuf = g_GPRS_DoubleBuffer.pU8NextBuf;
-//			g_GPRS_DoubleBuffer.pU8NextBuf = pU8Ptr;
-//		} else {
-//			uint8 u8Port;
-//			for(u8Port = 0; (u8Port < UART_COMM_NUM) && (g_UartComm[u8Port].Handle != huart); u8Port++);
-//			if(u8Port < UART_COMM_NUM) {
-//				HAL_UARTEx_ReceiveToIdle_DMA(g_UartComm[u8Port].Handle, &g_UartComm[u8Port].u8TRBuf[0], UART_TR_BUF_BLEN);
-//			}
-//		}
-//	}
-//}
+/* 只有使用HAL_UARTEx_ReceiveToIdle_DMA接收数据才会调用这个回调 */
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+	if((HAL_UART_RXEVENT_IDLE == HAL_UARTEx_GetRxEventType(huart)) || (HAL_UART_RXEVENT_TC == HAL_UARTEx_GetRxEventType(huart))) {		/* 当DMA缓冲满时，不会触发IDLE，所以两个中断事件都要监听 */
+		uint8 u8Port;
+		for(u8Port = 0; (u8Port < UART_COMM_NUM) && (g_UartComm[u8Port].Handle != huart); u8Port++) {
+		}
+		if(u8Port < UART_COMM_NUM) {
+			uint16 uRear = (UART_TR_BUF_BLEN - __HAL_DMA_GET_COUNTER(g_UartComm[u8Port].Handle->hdmarx)) % UART_TR_BUF_BLEN;		/* 获取队尾指针 */
+			if(huart->hdmarx->Init.Mode == DMA_NORMAL) {			/* 正常模式, 需要重启DMA */
+				if(__HAL_UART_GET_FLAG(huart, UART_FLAG_RXNE)) {	/* 有时DMA接收会少一字节, 这里补上 */
+					g_UartComm[u8Port].u8TRBuf[uRear] = (uint8)(huart->Instance->DR & 0xFF);
+					uRear = (uRear + 1) % UART_TR_BUF_BLEN;
+				}
+				HAL_UARTEx_ReceiveToIdle_DMA(huart, g_UartComm[u8Port].u8TRBuf, UART_TR_BUF_BLEN);
+			}
+			g_UartComm[u8Port].uRear = uRear;		/* 更新队尾指针 */
+			osSemaphoreRelease(g_UartComm[u8Port].Sem_RxGet);
+		}
+	}
+}
+
 #else
 void WriteToUart(uint8 u8Port, uint16 uNeedTxByte)
 {
@@ -1185,20 +1185,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 /* I2C写SCL引脚电平 */
 void I2C_W_SCL(uint8 u8Port, GPIO_PinState PinState)
 {
-	HAL_GPIO_WritePin(cnst_I2C_BSP[u8Port].u32SclBank, cnst_I2C_BSP[u8Port].u32SclPin, PinState);
+	HAL_GPIO_WritePin((GPIO_TypeDef *)cnst_I2C_BSP[u8Port].u32SclBank, cnst_I2C_BSP[u8Port].u32SclPin, PinState);
 }
 
 /* I2C写SDA引脚电平 */
 void I2C_W_SDA(uint8 u8Port, GPIO_PinState PinState)
 {
-	HAL_GPIO_WritePin(cnst_I2C_BSP[u8Port].u32SdaBank, cnst_I2C_BSP[u8Port].u32SdaPin, PinState);
+	HAL_GPIO_WritePin((GPIO_TypeDef *)cnst_I2C_BSP[u8Port].u32SdaBank, cnst_I2C_BSP[u8Port].u32SdaPin, PinState);
 }
 
 /* I2C读SDA引脚电平 */
 uint8_t I2C_R_SDA(uint8 u8Port)
 {
 	uint8_t BitValue;
-	BitValue = (uint8_t)HAL_GPIO_ReadPin(cnst_I2C_BSP[u8Port].u32SdaBank, cnst_I2C_BSP[u8Port].u32SdaPin);
+	BitValue = (uint8_t)HAL_GPIO_ReadPin((GPIO_TypeDef *)cnst_I2C_BSP[u8Port].u32SdaBank, cnst_I2C_BSP[u8Port].u32SdaPin);
 	return BitValue;
 }
 

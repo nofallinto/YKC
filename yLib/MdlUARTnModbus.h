@@ -80,7 +80,8 @@ typedef enum {
 	UART_APP_MAX
 }UART_APP;
 
-#define UART_TR_BUF_BLEN	(255 + 9)		/* 最长的是0x10指令 头(7byte)+数据(255byte)+CRC(2byte) */
+#define UART_TR_BUF_BLEN				(255 + 128)	/* 最长的是0x10指令 头(7byte)+数据(255byte)+CRC(2byte) */
+
 typedef struct {
     UART_Handle Handle;
     void* Sem_TxCplt;
@@ -98,10 +99,12 @@ typedef struct {
 	uint16 uTmr_Run_ms;						/* 单次通讯任务定时器，使得通讯任务保持固定的频率 */
     uint16 uTime_RxMaxIntv_ms;				/* 帧内字节间最大间隔时间 */
 	uint16 uRxBufPt;
-	uint16 uRxFrameIndex;					/* GPRS专属, 当一帧数据没接收完整时, 会从这个索引处继续接收, 所以用完应该立马置0 */
 
 	/* DMA通信模式专属 */
-
+	BOOL bIsUseDMAModeRx;					/* 是否使用DMA模式接收 1:DMA, 0:Normal */
+	BOOL bIsUseDMAModeTx;					/* 是否使用DMA模式发送 1:DMA, 0:Normal */
+	uint16 uHead;      						/* 头指针，只有DMA循环模式时有用 */
+	uint16 uRear;     						/* 尾指针 只有DMA循环模式时有用 */
 
 	/* 通讯Buf部分:32b对齐 */
 	uint8 u8TRBuf[UART_TR_BUF_BLEN];
@@ -109,6 +112,7 @@ typedef struct {
 	/* ItemPage请求，兼容mcgs,viewtech 用于处理conf,msg,acq */
 	ITEM_PAGE_REQ ItemPageReq;
 }UART_COMM;
+
 EXT SECTION(".NOT_ZeroInit") UART_COMM g_UartComm[MAX_UART_NUM];
 
 typedef enum {

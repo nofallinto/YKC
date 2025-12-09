@@ -24,6 +24,8 @@
 #include "task.h"
 #include "MdlGprs.h"
 #include "MdlUARTnModbus.h"
+#include "BMI270.h"
+#include <stdio.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -323,17 +325,8 @@ void SPI1_IRQHandler(void)
 void USART1_IRQHandler(void)
 {
   /* USER CODE BEGIN USART1_IRQn 0 */
-	if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_IDLE)) {
-		__HAL_UART_CLEAR_IDLEFLAG(&huart1);
-//		DMA_ReStart(&hdma_usart1_rx);		/* 重新启动DMA并且处理数据 */
-		/* 更新队尾指针 */
-		g_GPRSRingBuffer.uRear = (RING_BUFFER_MAX_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx)) % RING_BUFFER_MAX_SIZE;
-//		g_UartComm[GPRS_UART_PORT].bUartIdleFlag = TRUE;		/* 数据接收完成 */
-	}
 	if(__HAL_UART_GET_FLAG(&huart1, UART_FLAG_FE)) {	/* 发生帧错误, 这帧数据可能不能要了 */
 		__HAL_UART_CLEAR_FEFLAG(&huart1);
-//		OpenUartComm(GPRS_UART_PORT, 115200, 0, 30);	/* 重新打开串口 */
-		/* 将 */
 	}
   /* USER CODE END USART1_IRQn 0 */
   HAL_UART_IRQHandler(&huart1);
@@ -412,5 +405,31 @@ void DMA2_Channel4_5_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+void EXTI1_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI1_IRQn 0 */
 
+  /* USER CODE END EXTI1_IRQn 0 */
+	if(__HAL_GPIO_EXTI_GET_IT(BMI270_INT_Pin) != 0x00u) {
+		__HAL_GPIO_EXTI_CLEAR_IT(BMI270_INT_Pin);
+		if(HAL_GPIO_ReadPin(BMI270_INT_GPIO_Port, BMI270_INT_Pin)) {	/* 卡住了 */
+			printf("卡住\n");
+			g_Bmi270Comm.bIsStop = TRUE;
+		  } else {
+			printf("恢复了\n");
+			g_Bmi270Comm.bIsStop = FALSE;
+		}
+	  }
+  HAL_GPIO_EXTI_IRQHandler(BMI270_INT_Pin);
+  /* USER CODE BEGIN EXTI1_IRQn 1 */
+
+  /* USER CODE END EXTI1_IRQn 1 */
+}
+
+void HAL_GPIO_EXTI_Callback(uint16 GPIO_Pin)
+{
+	if(GPIO_Pin == BMI270_INT_Pin) {
+		printf("卡住了\n");
+	}
+}
 /* USER CODE END 1 */

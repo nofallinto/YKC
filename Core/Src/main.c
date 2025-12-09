@@ -28,7 +28,7 @@
 #if SUPPORT_GPRS
 #include "MdlGprs.h"
 #endif
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,9 +62,9 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim8;
 
-UART_HandleTypeDef huart4;
-UART_HandleTypeDef huart1;
-UART_HandleTypeDef huart3;
+UART_HandleTypeDef huart4;		/* 用于调试输出 UartNo: 0 */
+UART_HandleTypeDef huart1;		/* 用于GPRS通信 UartNo: 2 */
+UART_HandleTypeDef huart3;		/* 用于语音模块通信 UartNo: 1 */
 DMA_HandleTypeDef hdma_uart4_rx;
 DMA_HandleTypeDef hdma_uart4_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -176,10 +176,10 @@ int main(void)
 //  pU32 = (uint32*)0xE004200C;
 //  *pU32 = 0x0003;   /* debug閺嗗倸浠燙PU閿涘苯浠燭IM1/8閿涘奔澶嶉弮鑸碉拷褏娈� */
 //  htim2.Instance->EGR = 1;  /* 閺堬拷娴ｅ簼缍匲G缂冾喕璐�1閿涘矂鍣哥純顔款吀閺佹澘娅掗敍灞间簰娓氬灝鐤勯悳鏉跨暰閺冭泛娅掗崥灞绢劄 */
-  	InitDebugDat();
- 	g_CodeTest.i32Val[99] = SOFTWARE_VER;
- 	volatile uint32 reset_cause = RCC->CSR;
- 	RCC->CSR |= RCC_CSR_RMVF;  // 写 1 清除
+	InitDebugDat();
+// 	g_CodeTest.i32Val[99] = SOFTWARE_VER;
+// 	volatile uint32 reset_cause = RCC->CSR;
+// 	RCC->CSR |= RCC_CSR_RMVF;  // 写 1 清除
   /* USER CODE END 1 */
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -212,6 +212,7 @@ int main(void)
   MX_TIM1_Init();
 //  MX_IWDG_Init();
   MX_USART1_UART_Init();
+
   /* USER CODE BEGIN 2 */
   /* 閺囧瓨鏌婇崥顖氬З閻╃鍙ч崣姗�鍣洪敍灞筋洤閺嬫粍妲搁崘宄版儙閸旓拷(RCC_CSR_PORRSTF)閵嗕礁宕岀痪褎鍨ㄦ禍杞拌礋鏉烆垯娆㈤柌宥呮儙(RCC_CSR_PINRSTF|RCC_CSR_SFTRSTF)閵嗕浇鐨熺拠鏇犲閺堫剨绱濋崚娆忕殺闁插秴鎯庣拋鈩冩殶濞撳懘娴� */
   #if (DEVICE_TYPE == YKC)
@@ -277,21 +278,27 @@ int main(void)
   /* UART */
   InitUartComm();
 
-  g_UartComm[0].Handle = &huart4;
+  g_UartComm[0].Handle = &huart4;				/* 调试输出 */
+  g_UartComm[0].bIsUseDMAModeRx = TRUE;			/* 使用DMA接收 */
+  g_UartComm[0].bIsUseDMAModeTx = TRUE;			/* 使用DMA发送 */
   g_UartComm[0].Sem_TxCplt = SemCreate("Uart0TxCplt", 1, &g_UartBlock[0].TxSemCtlBlk);
   g_UartComm[0].Sem_RxGet = SemCreate("Uart0RxCplt", 1, &g_UartBlock[0].RxSemCtlBlk);
+
 //  TaskCreate("UartTask0", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[0].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[0].TaskCtlBlk);		姝や覆鍙ｄ笉鐢ㄧ嫭绔嬩换鍔＄鐞嗭紝鑰岀敱璋冭瘯闇�姹傝礋璐ｇ鐞�
 
-  g_UartComm[1].Handle = &huart3;
+  g_UartComm[1].Handle = &huart3;				/* 语音模块 */
+  g_UartComm[1].bIsUseDMAModeRx = TRUE;			/* 使用DMA接收 */
+  g_UartComm[1].bIsUseDMAModeTx = FALSE;		/* 使用DMA发送 */
   g_UartComm[1].Sem_TxCplt = SemCreate("Uart1TxCplt", 1, &g_UartBlock[1].TxSemCtlBlk);
   g_UartComm[1].Sem_RxGet = SemCreate("Uart1RxCplt", 1, &g_UartBlock[1].RxSemCtlBlk);
 //  TaskCreate("UartTask1", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[1].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[1].TaskCtlBlk);		姝や覆鍙ｄ笉鐢ㄧ嫭绔嬩换鍔＄鐞嗭紝鑰岀敱TTS璇煶妯″潡鍔熻兘璐熻矗绠＄悊
 
-  g_UartComm[2].Handle = &huart1;
+  g_UartComm[2].Handle = &huart1;				/* GPRS */
+  g_UartComm[2].bIsUseDMAModeRx = TRUE;			/* 使用DMA接收 */
+  g_UartComm[2].bIsUseDMAModeTx = FALSE;		/* 使用DMA发送 */
   g_UartComm[2].Sem_TxCplt = SemCreate("Uart2TxCplt", 1, &g_UartBlock[2].TxSemCtlBlk);
   g_UartComm[2].Sem_RxGet = SemCreate("Uart2RxCplt", 1, &g_UartBlock[2].RxSemCtlBlk);
   g_UartComm[2].uRxBufPt = 0;
-  g_UartComm[2].uRxFrameIndex = 0;
 //  TaskCreate("UartTask2", UartCommTask, (uint32*)0, osPriorityHigh, 0, g_UartBlock[2].Stack, MAX_UART_TASK_STACK_LEN, &g_UartBlock[2].TaskCtlBlk);		姝や覆鍙ｄ笉鐢ㄧ嫭绔嬩换鍔＄鐞嗭紝鑰岀敱GPRS鍔熻兘璐熻矗绠＄悊
 
   /* SPI */
@@ -302,7 +309,7 @@ int main(void)
   g_SysBlock.SEM_Ctr = SemCreate("CtrRun", 1, &g_SysBlock.RunSemCtlBlk);
   TaskCreate("CtrTask", CtrTask, NULL, osPriorityRealtime, 1, (uint8*)g_SysBlock.CtrStackBuf, CTR_TASK_STACK_BLEN, &g_SysBlock.CtrTaskCtlBlk);
   
-  /* 鐎涙ê鍋嶆禒璇插 */
+  /* 鐎涙ê鍋嶆禒璇插(临时注释) */
   g_DataAccessBlock.Sem_Op = SemCreate("NvMemOp", 1, &g_DataAccessBlock.OpSemCtlBlk);
   g_DataAccessBlock.DataAcsTSK = TaskCreate("DataAcs", DataAccessTask, NULL, osPriorityRealtime, 1, g_DataAccessBlock.Stack, DATA_ACCESS_TASK_STACK_LEN, &g_DataAccessBlock.TaskCtlBlk);
 
@@ -316,13 +323,13 @@ int main(void)
   /* Mqtt pub sem */
   SEM_MqttPubReq = SemCreate("MqttPubReq", 1, &MqttPubReqSemCtlBlk);
 
-//  /* MQTT sub task osPriorityBelowNormal*/
-
+  /* MQTT sub task osPriorityBelowNormal*/
+  g_GprsComm.GprsStatus = GPRS_NOT_INIT;
   MqttSubTaskHandle = TaskCreate("MqttSub", MqttSubTask, NULL, osPriorityBelowNormal,
 		  0, (uint8*)g_MqttComm[MQTT_TYPE_SUB].u32TaskStack, MQTT_TASK_STACK, &MqttSubTskCtlBlk);
 
   /* MQTT pub task */
-  MqttPubTaskHandle = TaskCreate("MqttPub", MqttPubTask, NULL, osPriorityLow,
+  MqttPubTaskHandle = TaskCreate("MqttPub", MqttPubTask, NULL, osPriorityBelowNormal,
 		  0, (uint8*)g_MqttComm[MQTT_TYPE_PUB].u32TaskStack, MQTT_TASK_STACK, &MqttPubTskCtlBlk);
 
   /* USER CODE END RTOS_THREADS */
@@ -1154,6 +1161,22 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /*Configure GPIO pin : BMI270_INT_Pin */
+	GPIO_InitStruct.Pin = BMI270_INT_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+	GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+	HAL_GPIO_Init(BMI270_INT_GPIO_Port, &GPIO_InitStruct);
+
+	/* 初始化GPRS使能引脚 */
+	GPIO_InitStruct.Pin = GPRS_4G_EN_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPRS_4G_EN_Port, &GPIO_InitStruct);
+
+	/* EXTI interrupt init*/
+	HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 

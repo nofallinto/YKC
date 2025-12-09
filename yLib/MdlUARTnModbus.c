@@ -177,7 +177,8 @@ void InitUartComm(void)
 		g_UartComm[i].LastUartApp = RS485_APP_AUTO;
 		g_UartComm[i].u8RS485AppAutoTablePt = 0;
 		g_UartComm[i].uLastBaud_100bps = 0;
-
+		g_UartComm[i].uHead = 0;
+		g_UartComm[i].uRear = 0;
         InitDataWithZero((uint8*)(&g_UartComm[i].ItemPageReq), sizeof(ITEM_PAGE_REQ));
 	}
 #if SUPPORT_MODBUS_TCP

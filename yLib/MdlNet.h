@@ -89,7 +89,7 @@ typedef struct {
 	BOOL bSentPingFlag;				/* 已经发送过PING包标志位 */
 	uint16 uTmr_RecvPingResp_ms;	/* 接收PING包响应倒计时 */
 	uint16 uTimer_SendPing_ms;		/* 发送PING包间隔时间 */
-}GPRS_MqttNewAdd;
+}Mqtt_PingConf;		/* Mqtt的ping包相关配置 */
 typedef struct {
 	uint32 u32SerialNo;
 	SOCKET MqttSocket;
@@ -103,7 +103,7 @@ typedef struct {
 	uint8 u8Count_ConnTry;		/* 连接尝试次数 */
 	BOOL bNeedReConn;
 	uint16 uRsvd;
-	GPRS_MqttNewAdd GprsNewAdd;			/* GPRS新增, 在PingMqttServer函数中有解释 */
+	Mqtt_PingConf pingConf;		/* GPRS新增, 在PingMqttServer函数中有解释 */
 }MQTT_COMM;
 typedef enum {
 	MQTT_TYPE_PUB		= 0,

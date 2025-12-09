@@ -75,15 +75,15 @@ typedef struct {								/* modbus通讯地址: 9200，注意地址步进是2 */
 	F32_QUEUE_t qRightMotorCurrHistory;		/* 右履带电流历史数据 */
 	F32_QUEUE_t qLeftMotorCurrHistory;		/* 左履带电流历史数据 */
 
-	F32_QUEUE_t qMotorAHistory;					/* 履带电机加速度历史数据 */
-
 	float32 fRightMaxI;
 	float32 fLeftMaxI;
 
 	/* 气压计 */
 	float32 fAirPressure;		/* 真空度 */
 	float32 fAirTemp;			/* 气压计温度 */
+	float32 fAimed_Air_P;		/* 期望抽的压差 */
 	uint8 u8TryCnt_AirSensor;	/* 气压计传感器通讯指示 */
+
 
 	/* IMU数据 */
 	uint8 u8TryCnt_IMU;
@@ -106,6 +106,13 @@ typedef struct {								/* modbus通讯地址: 9200，注意地址步进是2 */
 	uint16 uLeftCount;
 }MSR_RES;
 EXT SECTION(".NOT_ZeroInit") MSR_RES g_MsrRes;
+
+/* 调试相关 */
+typedef struct {
+	uint8 u8GprsDebugSwitch;			/* GPRS串口调试信息开关 */
+	uint8 u8CliffSwitch;				/* 是否启用悬崖开关 */
+}DebugConf;
+EXT SECTION(".NOT_ZeroInit") DebugConf g_DebugConf;
 
 /*===========================================================================
  * 红外遥控器
@@ -180,6 +187,7 @@ typedef enum {
 	VOICE_VOLTAGE_ERROR, 					/* 电压异常 */
 	VOICE_CPU_TEMPERATURE_ERROR, 			/* CPU温度异常 */
 	VOICE_BYEBYE, 							/* 成功退出 */
+	VOICE_MAX_NO,							/* 歌曲最大编号 */
 #if (!SOFT_RUN1_TEST0)
 	VOICE_HIT_SIDE_L_FRONT_DINNO, 			/* 左上检测到碰撞 */
 	VOICE_HIT_SIDE_L_REAR_DINNO, 			/* 左下检测到碰撞 */
@@ -194,7 +202,7 @@ typedef enum {
 	VOICE_CLIFF_REAR_LEFT_DINNO, 			/* 悬崖左下检测到碰撞 */
 	VOICE_CLIFF_REAR_RIGHT_DINNO 			/* 悬崖右下检测到碰撞 */
 #endif
-}TTS_DIALOG_TYPE;
+}MP3_DIALOG_TYPE;
 
 typedef enum {
 	MP3_CMD_QUERY_STATE = 0x01,			/* 查询播放状态(0~2: 停止/播放/暂停) */
@@ -202,9 +210,13 @@ typedef enum {
 	MP3_CMD_PAUSE = 0x03,				/* 暂停 */
 	MP3_CMD_STOP = 0x04,				/* 停止 */
 	MP3_CMD_SELECT_SONG_PLAY = 0x07,	/* 选择曲目播放 */
+	MP3_CMD_QUERY_DRIVE = 0x09,			/* 查看当前盘符 */
+	MP3_CMD_QUERY_SONGS_NUMBER = 0x0C,	/* 查询总曲目数 */
 	MP3_CMD_SET_VOLUME = 0x13,			/* 设置音量(0~30) */
 	MP3_CMD_VOLUME_UP = 0x14,			/* 音量加 */
 	MP3_CMD_VOLUME_DOWN = 0x15,			/* 音量减 */
+	MP3_CMD_SELECT_SONG = 0x1F,			/* 选曲不播放 */
+	MP3_CMD_GET_RUNING_TIME = 0x24,		/* 获取当前曲目总时间 */
 }MP3_CMD;	/* MP3模块指令 */
 
 EXT const char* cnst_TtsDialog[]
@@ -240,8 +252,9 @@ EXT const char* cnst_TtsDialog[]
 };
 #endif
 
-EXT BOOL InitTtsSpeaking();
-EXT BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup);		/* 如果成功加入播放队列则返回TRUE，如果队列已满则返回FALSE */
+//EXT BOOL InitTtsSpeaking();
+//EXT BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup);		/* 如果成功加入播放队列则返回TRUE，如果队列已满则返回FALSE */
+
 
 /* 异常序号，异常存放在 g_AnaRes.u32Abnormal */
 #define ABN_TIME_INVERSE_START_No       0  	/* 以下是反时限异常 */

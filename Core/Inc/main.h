@@ -150,6 +150,12 @@ void _c_int00(void);
 #define other_3_3_en_Pin GPIO_PIN_0
 #define other_3_3_en_GPIO_Port GPIOE
 
+#define BMI270_INT_Pin 			GPIO_PIN_1
+#define BMI270_INT_GPIO_Port 	GPIOC
+#define BMI270_INT_EXTI_IRQn 	EXTI1_IRQn
+
+#define GPRS_4G_EN_Pin			GPIO_PIN_2
+#define GPRS_4G_EN_Port			GPIOE
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

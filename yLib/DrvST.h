@@ -198,7 +198,8 @@ EXT void OnPostLiveUpdate(void);
 EXT void SoftRollBack(uint32 u32RunVersion);
 
 EXT uint32 GetVerVar(uint32 u32VersionVar);
-EXT uint32 GetVolatileFromU32Addr(const uint32 *pU32Val);					/* 读取指定存储器地址中当前实际的内容 */
+EXT uint32* GetCounterpartAddr(uint32 *pVal);
+EXT uint32 GetVolatileFromU32Addr(volatile const uint32 *pU32Val);			/* 读取指定存储器地址中当前实际的内容 */
 EXT BOOL CheckSoftVer(void);												/* 检测软件版本，返回是否是全新flash上运行 */
 EXT void GetSoftVersion(BOOT_SOFT_VERSION* pBootSoftVer);					/* 获取软件版本号 */
 EXT void InvalidateAnotherSoft(void);										/* 破坏另一个版本的软件完整性标志 */

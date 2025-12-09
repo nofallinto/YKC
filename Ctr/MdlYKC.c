@@ -66,15 +66,30 @@ typedef enum {
 
 	CLN_ST_DRIVE			= 5,		/* 直线+旋转 */
 	/* 以下为单独动作 */
-	CLN_ST_JTURN			= 6,		/* J弯 (直角转弯) */
-	CLN_ST_CTURN			= 7,		/* S弯 (倒U型弯) */
+	CLN_ST_JTURN			= 6,		/* J弯 (直角转弯, 角度一定会转到位) */
+	/* 因为S转弯时，会判断是否进入底部清洁，新增了顶部清洁的逻辑也在S弯里，如果都写在一起，S弯往下转弯时擦窗机的侧右前或侧右后也可能会触发碰撞，会误进入顶部清洁，因此分开来写. */
+//	CLN_ST_CTURN			= 7,		/* S弯 (倒U型弯) */
+	CLN_ST_UP_CTURN			=7,			/* S弯，往上转弯(倒U型弯, 距离和角度有一个到位就算完成) */
+	CLN_ST_DOWN_CTURN		=8,			/* S弯，往下转弯(倒U型弯, 距离和角度有一个到位就算完成) */
+
 	/* 探索边沿，边沿传感器需要被不断触发 */
-	CLN_ST_EXP_FORWARD_L	= 8,		/* 沿左边前进 */
-	CLN_ST_EXP_FORWARD_R	= 9,		/* 沿右边前进 */
-	CLN_ST_EXP_BACK_L		= 10,		/* 沿左边后退 */
-	CLN_ST_EXP_BACK_R		= 11,		/* 沿右边后退 */
-	CLN_ST_EXP_UP_FORWARD_R = 12,		/* 靠左前进探索上边沿 */
-	CLN_ST_EXP_UP_BACK_R	= 13,		/* 靠左后退探索上边沿 */
+	CLN_ST_EXP_FORWARD_L	= 9,		/* 沿左边前进 */
+	CLN_ST_EXP_FORWARD_R	= 10,		/* 沿右边前进 */
+	CLN_ST_EXP_BACK_L		= 11,		/* 沿左边后退 */
+	CLN_ST_EXP_BACK_R		= 12,		/* 沿右边后退 */
+//	CLN_ST_EXP_UP_FORWARD_R = 13,		/* 靠右前进探索上边沿(新增) */
+//	CLN_ST_EXP_UP_BACK_R	= 14,		/* 靠右后退探索上边沿(新增) */
+	/* 注：CLN_ST_EXP_FORWARD_R是已经到了右边沿之后，沿着右边沿走。
+	 * CLN_ST_EXP_UP_FORWARD_R是还没到右边沿呢，在探索中，这个跟擦窗机的Z字清洁类似，擦窗机"一行一行"的向下走，
+	 * 当底部碰到了就进入到了底部清洁。这个也是一样，一点一点的向上走，当顶部碰到了就进入了顶部清洁。
+	 * 以前的步骤是 启动时直接向上走到头，然后后退左拐，直接开始顶部清洁了，但是测试的时候发现，
+	 * 窗户有点窄的话擦不到顶部就进入Z字清洁了，刚开始是将顶部清洁多走两遍，但是如果窗户又特别宽，
+	 * 一遍就够了，所以就写成了这样，先探索右边沿，再进行清洁。
+	 * CLN_ST_EXP_UP_BACK_R和CLN_ST_EXP_UP_FORWARD_R的区别就是一个往前一个往后。 */
+
+	/* 实际运行时，擦窗机的一个角可能会卡在窗户边沿导致运行时 机身的角度发生巨大变化、或者因为履带打滑，也可能导致前进角度发生巨大变化，此时应该先纠正角度再继续运行. */
+	CLN_ST_ANGLE_CORRECTION = 13,		/* 角度修正 */
+
 	CLN_ST_BLANK			= 14,		/* 空白 */
 
 	CLN_ST_TEST
@@ -96,7 +111,7 @@ typedef struct {
 	uint8 u8ClnSeqNo, u8ClnSeqNo_last;			/*  */
 	uint16 uTimer_StrStpOn_10ms;		/* 启停键按下持续时间 */
 	uint16 uTimer_WinClnST;				/* 在某个状态持续的时间 */
-	uint16 uTimer_DInSig_10ms[MAX_DIN_NUM];
+	uint16 uTimer_DInSig_Tick[MAX_DIN_NUM];
 	uint32 u32DinDat_last;
 
 	/* 运动目标 */
@@ -116,7 +131,7 @@ typedef struct {
 	int8 i8Timer_RightAct;
 	int8 i8Timer_LeftAct;
 	BOOL bRightStall;					/* 右侧履带停滞卡住 */
-	BOOL bLeftStall;					/* 右侧履带停滞卡住 */
+	BOOL bLeftStall;					/* 左侧履带停滞卡住 */
 
 	/* 真空泵 */
 	float32 fAirPressure_PumpIdle;		/* 真空泵停时的空气压力 */
@@ -127,11 +142,6 @@ typedef struct {
 	int8 i8Tmr_Spray_Front_10ms;		/* 喷清洗液(前)计时器, -1代表此计时器空闲未使用 */
 	int8 i8Tmr_Spray_Back_10ms;			/* 喷清洗液(后)计时器, -1代表此计时器空闲未使用 */
 
-
-	/* 电机电流 */
-	float32 fRightHitCurrent;			/* 右电机碰撞时电流 正常行驶的电流就不记录了, 因为擦窗机朝向不同, 运行时电流不同. */
-	float32 fLeftHitCurrent;			/* 左电机碰撞时电流 */
-
 	float32 fGyrZAlpha;					/* Z轴方向上角速度的平滑系数 ((0.0f, 1.0f), 越小越平滑) */
 	float32 fGyrZJumpThr;				/* Z轴方向上角速度跳变阈值  (越小越敏感) */
 	float32 fGyrZDecayFactor;			/* Z轴方向上角速度跳变积分衰减因子  ((0.0f, 1.0f), 越小衰减越快) */
@@ -139,14 +149,15 @@ typedef struct {
 	float32 fGyrZVar;					/* Z轴方向上角速度方差 */
 	float32 fGyrZIntegral;				/* Z轴方向上角速度积分累加 + 衰减 */
 	BOOL bGyrZIsStall;					/* Z轴方向上角速度判断堵转 */
-	uint8 u8Tmr_GyrZStall_10ms;			/* Z轴方向上角速度堵转计时器 */
+	uint8 u8Tmr_GyroStall_Tick;			/* 陀螺仪静止计时器(通过陀螺仪中断判断) */
+	uint8 u8Tmr_GyrZStall_Tick;			/* Z轴方向上角速度堵转计时器(通过Z轴方向上的角速度长时间没变化判断) */
 
-	uint8 u8Tmr_RightOverCurrent_10ms;	/* 右电机过流计时器 */
-	uint8 u8Tmr_LeftOverCurrent_10ms;	/* 左电机过流计时器 */
+	/* 偏航自检相关 */
+	float32 fAngleErr_last;				/* 上次的角度误差 */
+	float32 fFirstYawAngle;				/* 第一次偏航时的角度 */
+	uint8 u8AngleErr_Tick;				/* 持续误差计时器 */
 
 	uint8 u8DebugNo;					/* 用于调试 */
-
-	BOOL bDisableCliff;
 }YKC_CTR;
 
 YKC_CTR g_YKCCtr;
@@ -156,15 +167,17 @@ typedef struct {
 }WIN_CLN_RUN_DATA;
 
 const CONF_n_STAT_PROP cnst_YkcConfProp[] = {                                              /* 1 2 3 4 5 6 7 8 9 A B C D E F 1 2 3 4 5 6 7 8 9 A B C D E F */
-    {1001, {ITEM_DAT_TOPIC, 0, 0, SAVE_GRP_NUL}, 3, NULL,                      			{"系统与通讯配置", "Default"}},
-    {1002, {ITEM_DAT_SOFTVER, 0, 0, SAVE_GRP_NUL}, SOFTWARE_VER, NULL,                	{"软件版本", "Soft Version"}},
-    {1003, {ITEM_DAT_U32_ID_RO, 0, 0, SAVE_GRP_BRD}, 0, (void*)&g_Sys.SerialNo,       	{"序列号", "S/N:"}},
-    {1004, {ITEM_DAT_T32_RO, 0, 0, SAVE_GRP_BRD}, 0, (void*)&g_Sys.u32License_Seconds,	{"授权期限(年月日时)", "deadline"}},
-	{1005, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fRightHitCurrent, {"右电机堵转时电流", "Soft Version"}},
-	{1006, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fLeftHitCurrent, 	{"左电机堵转时电流", "Soft Version"}},
-	{1007, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fGyrZAlpha, 		{"Z轴方向上角速度的平滑系数 ((0.0f, 1.0f), 越小越平滑)", "Soft Version"}},
-	{1008, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fGyrZJumpThr, 	{"Z轴方向上角速度跳变阈值  (越小越敏感)", "Soft Version"}},
-	{1009, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fGyrZDecayFactor, {"Z轴方向上角速度跳变积分衰减因子  ((0.0f, 1.0f), 越小衰减越快)", "Soft Version"}},
+    {1001, {ITEM_DAT_TOPIC, 0, 0, SAVE_GRP_NUL}, 7, NULL,                      				{"系统与通讯配置", "Default"}},
+    {1002, {ITEM_DAT_SOFTVER, 0, 0, SAVE_GRP_NUL}, SOFTWARE_VER, NULL,                		{"软件版本", "Soft Version"}},
+    {1003, {ITEM_DAT_U32_ID_RO, 0, 0, SAVE_GRP_BRD}, 0, (void*)&g_Sys.SerialNo,       		{"序列号", "S/N:"}},
+    {1004, {ITEM_DAT_T32_RO, 0, 0, SAVE_GRP_BRD}, 0, (void*)&g_Sys.u32License_Seconds,		{"授权期限(年月日时)", "deadline"}},
+//	{1005, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fRightHitCurrent, 	{"右电机堵转时电流", ""}},
+//	{1006, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fLeftHitCurrent, 		{"左电机堵转时电流", ""}},
+	{1005, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 1000, (void *)&g_CommConf.u32MqttPubIntv_ms, {"Mqtt消息间隔(10: 打开DebugPack)", ""}},
+	{1006, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 2800, (void *)&g_MsrRes.fAimed_Air_P, 		{"期望的压差", ""}},
+	{1007, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_DebugConf.u8GprsDebugSwitch, {"GPRS调试开关", ""}},
+	{1008, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 1, (void *)&g_DebugConf.u8CliffSwitch, 	{"悬崖开关调试开关", ""}},
+//	{1009, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fGyrZDecayFactor, {"Z轴方向上角速度跳变积分衰减因子  ((0.0f, 1.0f), 越小衰减越快)", ""}},
 };
 
 /* EEProm地址分配 */
@@ -195,7 +208,7 @@ typedef struct {
 }CLN_ST_SEQ;
 /* 以下是 CLN_ST_SEQ.iForward 特殊指令，除此之外都是合法有效的距离指令 */
 #define FORWORD_INSTR_ReturnX	32001	/* 返回X原点 */
-#define FORWORD_INSTR_ReturnY	32002		/* 返回Y原点 */
+#define FORWORD_INSTR_ReturnY	32002	/* 返回Y原点 */
 #define FORWORD_INSTR_INF		32000	/* 朝前走到头 */
 #define FORWORD_INSTR_nINF		-32000	/* 后退到头 */
 #define VALID_FORWORD_DISTANCE(x) ((FORWORD_INSTR_nINF < x) && (x < FORWORD_INSTR_INF))
@@ -204,107 +217,116 @@ typedef struct {
 #define SPRAY_INSTR_SPRAY_FRONT		1
 #define SPRAY_INSTR_SPRAY_BACK		(-1)
 
+#define WINDOW_Z_SUB_CLEANING_ANGLE		20				/* 新增：Z子清洁的角度 */
+
 const CLN_ST_SEQ cnst_ClnSTSeq[] = {
-//	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},
-//	{CLN_ST_DRIVE,			45, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 1. 校准:左转45度 */
-//	{CLN_ST_DRIVE, 			-45,	0,						SPRAY_INSTR_SPRAY_NONE},	/* 2. 校准:右转45度 */
-//	{CLN_ST_DRIVE, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 3. 校准:回到0度 */
-//	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 4. 运动到边 */
-////	{CLN_ST_DRIVE, 			0, 		-1800,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
-//	{CLN_ST_DRIVE, 			0, 		-500,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
-//	{CLN_ST_DRIVE, 			50, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 6. 旋转50度 */
-//	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_FRONT},	/* 7. 前进J弯:减少角度 */
-//	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 8. 沿着上沿前进 */
-//	{CLN_ST_EXP_BACK_R, 	90,	 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 9. 沿着上沿后退 */
-//	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF, 		SPRAY_INSTR_SPRAY_NONE},	/* 10. 再次沿着上沿前进（为防止(顶部倒车时没覆盖到的区域)和(宽度较窄时，左上角的三角区域)没擦到） */
 
 	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},
 	{CLN_ST_DRIVE,			45, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 1. 校准:左转45度 */
 	{CLN_ST_DRIVE, 			-45,	0,						SPRAY_INSTR_SPRAY_NONE},	/* 2. 校准:右转45度 */
 	{CLN_ST_DRIVE, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 3. 校准:回到0度 */
 	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 4. 运动到边 */
-//	{CLN_ST_DRIVE, 			0, 		-1800,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
-	{CLN_ST_DRIVE, 			0, 		-500,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
+	{CLN_ST_DRIVE, 			0, 		-800,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
 	{CLN_ST_DRIVE, 			50, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 6. 旋转50度 */
 	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_FRONT},	/* 7. 前进J弯:减少角度 */
-	{CLN_ST_EXP_UP_FORWARD_R,90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 8. 沿着上沿前进 (探索上边沿) */
-	{CLN_ST_EXP_UP_BACK_R, 	90,	 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 9. 沿着上沿后退 (探索上边沿)*/
-	{CLN_ST_JUMP, 			0, 		-2,						SPRAY_INSTR_SPRAY_NONE},	/* 10. 跳转到探索上边沿开头 */
-	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 11. 清洁上沿前进 (从右往左清洁上边沿的开始No) */
-	{CLN_ST_EXP_BACK_R, 	90,	 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 12. 清洁上沿后退 (从左往右清洁上边沿的开始No) */
-	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 13. 清洁上沿前进 */
+
+	/* 新增、用于探索窗户的上边沿 */
+	{CLN_ST_UP_CTURN, 		90 - WINDOW_Z_SUB_CLEANING_ANGLE, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 8. 向上前进S弯:减小角度 */
+	{CLN_ST_UP_CTURN, 		90, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 9. 向上前进S弯:增加角度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 10. 前进到头 */
+	{CLN_ST_UP_CTURN, 		90 + WINDOW_Z_SUB_CLEANING_ANGLE, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 11. 向上后退S弯:加大角度 */
+	{CLN_ST_UP_CTURN, 		90, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 12. 向上后退S弯:减少角度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_NONE},	/* 13. 后退到头 */
+	{CLN_ST_JUMP, 			0, 		-6,						SPRAY_INSTR_SPRAY_NONE},	/* 14. 跳转到Z清洁开头 */
+
+	/* 顶部清洁:自右向左(前进)S弯碰边后：先前进，再后退 */
+	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 15. 前进J弯:减少角度 */
+	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 16. 沿着上沿前进 */
+	{CLN_ST_EXP_BACK_R, 	90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 17. 沿着上沿后退 */
+	{CLN_ST_JTURN, 			90 + WINDOW_Z_SUB_CLEANING_ANGLE, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 18. 前进J弯:加大角度 */
+	{CLN_ST_JUMP, 			0, 		8,						SPRAY_INSTR_SPRAY_NONE},	/* 19. 跳转到Z清洁开头 */
+
+	/* 顶部清洁:自左向右(后退)S弯碰边后：先后退，再前进 */
+	{CLN_ST_JTURN, 			90,	 	-1, 					SPRAY_INSTR_SPRAY_NONE},	/* 20. 后退J弯:减少角度 */
+	{CLN_ST_EXP_BACK_R, 	90, 	FORWORD_INSTR_nINF, 	SPRAY_INSTR_SPRAY_BACK},	/* 21. 沿着上沿后退 */
+	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF, 		SPRAY_INSTR_SPRAY_NONE},	/* 22. 沿着上沿前进 */
 
 	/* 以下是Z清洁 */
-	{CLN_ST_JTURN, 			60, 	-1,						SPRAY_INSTR_SPRAY_NONE},	/* 14. 后退J弯:加大角度 */
-	{CLN_ST_CTURN, 			90, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 15. 后退S弯:减少角度 */
-	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 16. 后退到头 */
-	{CLN_ST_CTURN, 			120, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 17. 前进S弯:加大角度 */
-	{CLN_ST_CTURN, 			90, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 18. 前进S弯:减少角度 */
-	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 19. 前进到头 */
-	{CLN_ST_CTURN, 			60, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 20. 后退S弯:加大角度 */
-	{CLN_ST_CTURN, 			90, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 21. 后退S弯:减少角度 */
-	{CLN_ST_JUMP, 			0, 		-6,						SPRAY_INSTR_SPRAY_NONE},	/* 22. 跳转到Z清洁开头 */
+	{CLN_ST_JTURN, 			90 - WINDOW_Z_SUB_CLEANING_ANGLE, 	-1,						SPRAY_INSTR_SPRAY_NONE},	/* 23. 后退J弯:加大角度 */
+	{CLN_ST_DOWN_CTURN, 	90, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 24. 后退S弯:减少角度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 25. 后退到头 */
+	{CLN_ST_DOWN_CTURN, 	90 + WINDOW_Z_SUB_CLEANING_ANGLE, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 26. 前进S弯:加大角度 */
+	{CLN_ST_DOWN_CTURN, 	90, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 27. 前进S弯:减少角度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 28. 前进到头 */
+	{CLN_ST_DOWN_CTURN, 	90 - WINDOW_Z_SUB_CLEANING_ANGLE, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 29. 后退S弯:加大角度 */
+	{CLN_ST_DOWN_CTURN, 	90, 	-4000,					SPRAY_INSTR_SPRAY_NONE},	/* 30. 后退S弯:减少角度 */
+	{CLN_ST_JUMP, 			0, 		-6,						SPRAY_INSTR_SPRAY_NONE},	/* 31. 跳转到Z清洁开头 */
 
 
 	/* 底部清洁:自右向左(前进)S弯碰边后：先前进，再后退 */
-	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 23. 前进J弯:减少角度 */
-	{CLN_ST_EXP_FORWARD_L, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 24. 沿着下沿前进 */
-	{CLN_ST_EXP_BACK_L, 	90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_NONE},	/* 25. 沿着下沿后退 */
-	{CLN_ST_JTURN, 			60, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 26. 前进J弯:加大角度 */
-	{CLN_ST_DRIVE, 			90, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 27. 前进J弯:减少角度 */
-	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_ReturnX,	SPRAY_INSTR_SPRAY_NONE},	/* 28. X轴返回原点 */
-	{CLN_ST_DRIVE,	 		0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 29. 旋转到朝上 */
-	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_ReturnY,	SPRAY_INSTR_SPRAY_NONE},	/* 30. Y轴返回原点 */
-	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 31. 结束清洁 */
-
-	/* 底部清洁:自左向右(后退)S弯碰边后：先后退，再前进 */
-	{CLN_ST_JTURN, 			90,	 	-1, 					SPRAY_INSTR_SPRAY_NONE},	/* 32. 后退J弯:减少角度 */
-	{CLN_ST_EXP_BACK_L, 	90, 	FORWORD_INSTR_nINF, 	SPRAY_INSTR_SPRAY_BACK},	/* 33. 沿着下沿后退 */
-	{CLN_ST_EXP_FORWARD_L, 	90, 	FORWORD_INSTR_INF, 		SPRAY_INSTR_SPRAY_NONE},	/* 34. 沿着下沿前进 */
-	{CLN_ST_JTURN, 			120, 	-1, 					SPRAY_INSTR_SPRAY_NONE},	/* 35. 后退J弯:加大角度 */
-	{CLN_ST_DRIVE, 			90, 	-4000, 					SPRAY_INSTR_SPRAY_NONE},	/* 36. 后退S弯:减少角度 */
-	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_ReturnX, 	SPRAY_INSTR_SPRAY_NONE},	/* 37. X轴返回原点 */
-	{CLN_ST_DRIVE, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 38. 旋转到朝上 */
-	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_ReturnY, 	SPRAY_INSTR_SPRAY_NONE},	/* 39. Y轴返回原点 */
-	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 40. 结束清洁 */
-
-	/* 测试1 */
-	{CLN_ST_DRIVE, 			90, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 38. 旋转45度 */
-	{CLN_ST_CTURN, 			120, 	2000,					SPRAY_INSTR_SPRAY_NONE},	/* 14. 前进S弯:加大角度 */
+	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 32. 前进J弯:减少角度 */
+	{CLN_ST_EXP_FORWARD_L, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 33. 沿着下沿前进 */
+	{CLN_ST_EXP_BACK_L, 	90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_NONE},	/* 34. 沿着下沿后退 */
+	{CLN_ST_JTURN, 			70, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 35. 前进J弯:加大角度(之前是60，转弯角度过大，仍然会卡住) */
+	{CLN_ST_DRIVE, 			90, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 36. 前进J弯:减少角度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_ReturnX,	SPRAY_INSTR_SPRAY_NONE},	/* 37. X轴返回原点 */
+	{CLN_ST_DRIVE,	 		0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 38. 旋转到朝上 */
+	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_ReturnY,	SPRAY_INSTR_SPRAY_NONE},	/* 39. Y轴返回原点 */
 	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 40. 结束清洁 */
 
+	/* 底部清洁:自左向右(后退)S弯碰边后：先后退，再前进 */
+	{CLN_ST_JTURN, 			90,	 	-1, 					SPRAY_INSTR_SPRAY_NONE},	/* 41. 后退J弯:减少角度 */
+	{CLN_ST_EXP_BACK_L, 	90, 	FORWORD_INSTR_nINF, 	SPRAY_INSTR_SPRAY_BACK},	/* 42. 沿着下沿后退 */
+	{CLN_ST_EXP_FORWARD_L, 	90, 	FORWORD_INSTR_INF, 		SPRAY_INSTR_SPRAY_NONE},	/* 43. 沿着下沿前进 */
+	{CLN_ST_JTURN, 			110, 	-1, 					SPRAY_INSTR_SPRAY_NONE},	/* 44. 后退J弯:加大角度 */
+	{CLN_ST_DRIVE, 			90, 	-4000, 					SPRAY_INSTR_SPRAY_NONE},	/* 45. 后退S弯:减少角度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_ReturnX, 	SPRAY_INSTR_SPRAY_NONE},	/* 46. X轴返回原点 */
+	{CLN_ST_DRIVE, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 47. 旋转到朝上 */
+	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_ReturnY, 	SPRAY_INSTR_SPRAY_NONE},	/* 48. Y轴返回原点 */
+	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 49. 结束清洁 */
+
+	/* 测试1 */
+	{CLN_ST_DRIVE, 			90, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 50. 旋转45度 */
+	{CLN_ST_UP_CTURN, 		120, 	2000,					SPRAY_INSTR_SPRAY_NONE},	/* 51. 前进S弯:加大角度 */
+	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 52. 结束清洁 */
+
 	/* 测试2 */
-	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 41. 沿着上沿前进 */
-	{CLN_ST_EXP_BACK_R, 	90,	 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 42. 沿着上沿后退 */
-	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF, 		SPRAY_INSTR_SPRAY_NONE},	/* 43. 再次沿着上沿前进（为防止(顶部倒车时没覆盖到的区域)和(宽度较窄时，左上角的三角区域)没擦到） */
-	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 44. 结束清洁 */
+	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 44. 沿着上沿前进 */
+	{CLN_ST_EXP_BACK_R, 	90,	 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_BACK},	/* 45. 沿着上沿后退 */
+	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF, 		SPRAY_INSTR_SPRAY_NONE},	/* 46. 再次沿着上沿前进（为防止(顶部倒车时没覆盖到的区域)和(宽度较窄时，左上角的三角区域)没擦到） */
+	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 47. 结束清洁 */
 
 	/* 测试3 */
-//	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 45. 运动到边 */
-	{CLN_ST_DRIVE, 			-90,	0,						SPRAY_INSTR_SPRAY_NONE},	/* 2. 校准:右转90度 */
-	{CLN_ST_JTURN, 			-60, 	-1,						SPRAY_INSTR_SPRAY_NONE},	/* 11. 后退J弯:加大角度 */
-	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 46. 结束清洁 */
+	{CLN_ST_DRIVE,			90, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 48. 校准:左转90度 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_NONE},	/* 49. 后退到头 */
+	{CLN_ST_DRIVE, 			90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 50. 前进到头 */
+	{CLN_ST_JUMP, 			0, 		-2,						SPRAY_INSTR_SPRAY_NONE},	/* 51. 跳转到Z清洁开头 */
+	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 52. 结束清洁 */
 
 	/* 测试4 */
-
+	{CLN_ST_JTURN, 			60, 	1,						SPRAY_INSTR_SPRAY_NONE},	/* 53. 前进J弯:加大角度 */
+	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 54. 结束清洁 */
 };
 #define CLN_SEQ_START_No		1
-#define CLN_SEQ_Z_BEGIN_No		11
-#define CLN_SEQ_WIN_BTM_R2L_No	23			/* 底部清洁，自右向左 */
-#define CLN_SEQ_WIN_BTM_L2R_No	32			/* 底部清洁，自左向右 */
+#define CLN_SEQ_WIN_TOP_R2L_No  15			/* 顶部清洁，自右向左 */
+#define CLN_SEQ_WIN_TOP_L2R_No	20			/* 顶部清洁，自左向右 */
+#define CLN_SEQ_WIN_BTM_R2L_No	32			/* 底部清洁，自右向左 */
+#define CLN_SEQ_WIN_BTM_L2R_No	41			/* 底部清洁，自左向右 */
+
 #define CLN_SEQ_TEST_No			38
 #define CLN_SEQ_TEST2_No		39
 #define CLN_SEQ_TEST3_No		40
 
 /* 调试用 */
-#define CLN_SEQ_TEST2_START_No	41
-#define CLN_SEQ_TEST3_START_No	45
+#define CLN_SEQ_TEST1_START_No	41
+#define CLN_SEQ_TEST2_START_No	44
+#define CLN_SEQ_TEST3_START_No	48
 
 /*---------------------测试用开关---------------------*/
-#define CLIFF_DEACTIVE 	FALSE			/* 临时关闭悬崖开关（常为开） */
+#define CLIFF_DEACTIVE 	TRUE			/* 临时关闭悬崖开关（常为开） */
 #define PUMP_DEACTIVE	FALSE			/* 关闭真空泵 */
-#define LOW_AIR_P		TRUE			/* 允许低真空水平至2300Pa，而不是标准的2800Pa */
-#define DEBUG_PRINT_CLN_STATE	TRUE 	/* 打印清污机状态 */
+#define LOW_AIR_P		FALSE			/* 允许低真空水平至2300Pa，而不是标准的2800Pa */
+#define DEBUG_PRINT_CLN_STATE	FALSE 	/* 打印清污机状态 */
 #define LOW_AIR_CLOSE_CLN	FALSE		/* 低气压时停止擦窗机 */
 #define CLOSE_SPRAY_WATER	FALSE		/* 关闭喷水 */
 #define MAX_DUTY_RATIO		0.85f		/* 履带最大占空比, 用于控制擦窗机最大速度 */
@@ -319,12 +341,12 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 #define VACUUM_AIM_ERR_TOLERANCE	0.15f
 #define PUMP_TICK_TO_FULL_SPEED		200			/* 真空泵开到全速所需时长（单位10ms） */
 #define PUMP_TICK_VACUMM_SUFF		100			/* 气压不足判定时长（单位10ms）  */
-#define PUMP_IDEL_DUTY				0.0f		/* IDEL时维持很低的吸力，防止掉落 */
+#define PUMP_IDLE_DUTY				0.0f		/* IDEL时维持很低的吸力，防止掉落 */
 #define SPRAY_TIMEOUT_10ms			100			/* 喷水超时 */
 #if LOW_AIR_P
 			#define AIMED_AIR_P	2100
 #else
-			#define AIMED_AIR_P	2800
+			#define AIMED_AIR_P	(g_MsrRes.fAimed_Air_P)
 #endif
 
 /***************************************************************************
@@ -343,14 +365,14 @@ void NextWinClnSTBySeq(uint8 u8NewSeqNo_0Auto);
 \=========================================================================*/
 void InitMdlCtr(void)		/* rename from InitYKC() */
 {
-	InitDataWithZero((uint8*)(&g_MsrRes), sizeof(g_MsrRes));
+//	InitDataWithZero((uint8*)(&g_MsrRes), sizeof(g_MsrRes));
 	InitDataWithZero((uint8*)(&g_AnaRes), sizeof(g_AnaRes));
 	InitDataWithZero((uint8*)(&g_YKCCtr), sizeof(g_YKCCtr));
 	InitDataWithZero((uint8*)(&g_Ctr), sizeof(g_Ctr));
 
 	/* 初始化配置 */
 	g_YKCCtr.fGyrZAlpha = 0.05f;
-	g_YKCCtr.fGyrZJumpThr = 150.0f;
+	g_YKCCtr.fGyrZJumpThr = 10.0f;
 	g_YKCCtr.fGyrZDecayFactor = 0.9f;
 
 	/* 初始化队列 */
@@ -374,22 +396,24 @@ void InitMdlCtr(void)		/* rename from InitYKC() */
 	InitSample();		/* 由于采样需要填充buf，然后才好计算，因此现行启动 */
 
 	/* 初始化语音模块 */
-	InitTtsSpeaking();
+//	InitTtsSpeaking();
+	if(!InitMp3Speaking()) {
+		configASSERT(FALSE);
+	}
 	
 	GPIO_write(OTHER_DEV_DOutNo, 1);		/* 使能周边设备3.3v供电 */
 	/* 初始化六轴传感器 */
     if(!Bmi270Init()) {
 		/* IMU初始化失败*/
-    	TtsSpeak(VOICE_IMU_ABN, FALSE);
-		configASSERT(FALSE);
+    	Mp3Speak(VOICE_IMU_ABN, TRUE);
+//		configASSERT(FALSE);
 	}
 	/* 初始化气压计 */
     if(!Bmp280Init()) {
 		/* IMU初始化失败*/
-    	TtsSpeak(VOICE_AIR_PRES_ABN, FALSE);
+    	Mp3Speak(VOICE_AIR_PRES_ABN, TRUE);
 		configASSERT(FALSE);
 	}
-
 	/* 初始化红外遥控器  TIM5频率1MHz, ARR==65535 */
 	extern TIM_HandleTypeDef htim5;
 	HAL_TIM_Base_Start_IT(&htim5);	 			/* 启动定时器中断，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
@@ -444,7 +468,7 @@ BOOL IsMeetWheelStallCur(float32 fCurrent)
 //		return fCurrent > 1.0f;
 //	}
 #if USE_SELF_DEVELOP_MOTOR
-	return fCurrent > 2.0f;		/* 如果限速了 推荐过流电流是1.0~1.2, 没限速推荐过流电流是1.2~1.5 */
+	return fCurrent > 1.5f;		/* 如果限速了 推荐过流电流是1.0~1.2, 没限速推荐过流电流是1.2~1.5 */
 #else
 	return fCurrent > 0.5f;
 #endif
@@ -455,21 +479,38 @@ void WinClnDebug(void);
 /* 判断擦窗机是否部分悬空 即：至少有一个悬空 */
 BOOL WinClnSectionHang(void)
 {
-	return (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
-										|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
-										|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-										|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]);
+	return (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
+										|| g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo]
+										|| g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo]
+										|| g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo]);
 }
 
 /* 判断擦窗机是否完全悬空 即：四个角全部悬空 */
 BOOL WinClnCompleteHang(void)
 {
-	return (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
-										&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
-										&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-										&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]);
+	return (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
+										&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo]
+										&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo]
+										&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo]);
 }
 /* Debug 调试信息 */
+//const char *aChWinClnSTStr[] = {
+//		"空闲",
+//		"暂停",
+//		"悬空",
+//		"清洁完成",
+//		"循环跳转",
+//		"直线+旋转",
+//		"J弯(指教转弯)",
+//		"S弯(倒U型弯)",
+//		"沿左边前进",
+//		"沿右边前进",
+//		"沿左边后退",
+//		"沿右边后退",
+//		"前进探索上沿",
+//		"后退探索上沿",
+//		"空白"
+//};
 const char *aChWinClnSTStr[] = {
 		"空闲",
 		"暂停",
@@ -478,13 +519,12 @@ const char *aChWinClnSTStr[] = {
 		"循环跳转",
 		"直线+旋转",
 		"J弯(指教转弯)",
-		"S弯(倒U型弯)",
+		"S弯上",
+		"S弯下",
 		"沿左边前进",
 		"沿右边前进",
 		"沿左边后退",
 		"沿右边后退",
-		"前进探索上沿",
-		"后退探索上沿",
 		"空白"
 };
 const char *aChWinClnDinStr[] = {
@@ -505,7 +545,7 @@ const char *aChWinClnDinStr[] = {
 };
 #if DEBUG_PRINT_CLN_STATE
 #include <stdio.h>
-#define DEBUG_PRINTF_FREQUENCY_10MS			5		/* Debug信息打印频率 单位10ms */
+#define DEBUG_PRINTF_FREQUENCY_10MS			100		/* Debug信息打印频率 单位10ms */
 void WinClnDebug(void)
 {
 	static int i32DebugCnt = DEBUG_PRINTF_FREQUENCY_10MS;
@@ -514,14 +554,14 @@ void WinClnDebug(void)
 	} else {
 		i32DebugCnt = DEBUG_PRINTF_FREQUENCY_10MS;
 	}
-	printf("擦窗机运动状态: %s 角度: %.2f 目标角度: %.2f\n", aChWinClnSTStr[g_YKCCtr.WinClnST], g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle);
+//	printf("擦窗机运动状态: %s 角度: %.2f 目标角度: %.2f\n", aChWinClnSTStr[g_YKCCtr.WinClnST], g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle);
 //	printf("\n擦窗机运动状态: %s 左轮电流：%.4f, 右轮电流：%.4f\n", aChWinClnSTStr[g_YKCCtr.WinClnST], g_MsrRes.fLeftCur, g_MsrRes.fRightCur);
 //	printf("g_MsrRes.fAccelerateX = %.5f\n", g_MsrRes.fAccelerateX);
 	printf("\n气压差：%.2f\n", g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure);
 	/* 打印开出状态 */
 //	printf("擦窗机碰撞悬空状态: ");
 //	for(int i = 0; i <= CLIFF_REAR_RIGHT_DInNo; i++) {
-//		if(g_YKCCtr.uTimer_DInSig_10ms[i]) {
+//		if(g_YKCCtr.uTimer_DInSig_Tick[i]) {
 //			printf("%s ", aChWinClnDinStr[i]);
 //		}
 //	}
@@ -536,12 +576,11 @@ void WinClnDebug(void)
 /* 更新擦窗机Z轴角速度数据 */
 void UpdateWinClnGyrZ(void)
 {
-	if((abs(g_YKCCtr.i8Timer_RightAct) > 10
-		&& (fabs(g_YKCCtr.fRightDuty) > MAX_DUTY_RATIO - 0.03f))
-	|| (abs(g_YKCCtr.i8Timer_LeftAct) > 10
-		&& (fabs(g_YKCCtr.fLeftDuty) > MAX_DUTY_RATIO - 0.03f))) {	/* 擦窗机正在稳定运行, 并且占空比为满（之所以满占空比是因为擦窗机运行时至少有一个电机是满占空比） */
+	if(((abs(g_YKCCtr.i8Timer_RightAct) > 10)
+			&& (fabs(g_YKCCtr.fRightDuty) > MAX_DUTY_RATIO - 0.03f))
+		|| ((abs(g_YKCCtr.i8Timer_LeftAct) > 10)
+			&& (fabs(g_YKCCtr.fLeftDuty) > MAX_DUTY_RATIO - 0.03f))) {	/* 擦窗机正在稳定运行, 并且占空比为满（之所以满占空比是因为擦窗机运行时至少有一个电机是满占空比） */
 		float32 fGyrZ = (float32)abs(g_MsrRes.iGyroZ);
-		float32 fAim_R2L = g_YKCCtr.fRightDuty / g_YKCCtr.fLeftDuty;
 		if(g_YKCCtr.fGyrZMean == 0.0f) {
 			g_YKCCtr.fGyrZMean = fGyrZ;
 			g_YKCCtr.fGyrZVar = 1e-6f;
@@ -559,62 +598,105 @@ void UpdateWinClnGyrZ(void)
 
 		/* 查看是否发生了堵转 */
 		if(fGyrZ < 4.0f) {
-			if(g_YKCCtr.u8Tmr_GyrZStall_10ms < 0xFF) {
-				g_YKCCtr.u8Tmr_GyrZStall_10ms++;
+			if(g_YKCCtr.u8Tmr_GyrZStall_Tick < 0xFF) {
+				g_YKCCtr.u8Tmr_GyrZStall_Tick++;
 			}
 		} else {
-			g_YKCCtr.u8Tmr_GyrZStall_10ms = 0;
+			g_YKCCtr.u8Tmr_GyrZStall_Tick = 0;
 		}
 #if DEBUG_PRINT_CLN_STATE
-//		printf("fGyrZ = %f, fJumpZ = %.5f, g_YKCCtr.fGyrZIntegral = %.5f g_YKCCtr.fMotorDutyAim_R2L = %.5f\n", fGyrZ, fJumpZ, g_YKCCtr.fGyrZIntegral, fAim_R2L);
-//		printf("fGyrZ = %f, fJumpZ = %.5f, g_YKCCtr.fGyrZIntegral = %.5f ac = %.5f, ex = %.5f, fAim_R2L = %.5f\n", fGyrZ, fJumpZ, g_YKCCtr.fGyrZIntegral, g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle, fAim_R2L);
+		printf("fGyrZ = %f, fJumpZ = %.5f, g_YKCCtr.fGyrZIntegral = %.5f DutyAim_R2L = %.5f\n", fGyrZ, fJumpZ, g_YKCCtr.fGyrZIntegral, fAim_R2L);
+		printf("ac = %.5f, ex = %.5f\n\n", g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle);
 //		printf("RightDuty = %f, LeftDuty = %.5f, RightI = %.5f LeftI = %.5f, ac = %.5f, ex = %.5f\n", g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_MsrRes.fRightCur, g_MsrRes.fLeftCur, g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle);
 #endif
 	} else {	/* 停下或者行进状态改变了, 重新计算 */
 		g_YKCCtr.bGyrZIsStall = FALSE;
 		g_YKCCtr.fGyrZIntegral = 0.0f;
 		g_YKCCtr.fGyrZMean = 0.0f;
-		g_YKCCtr.u8Tmr_GyrZStall_10ms = 0;
+		g_YKCCtr.u8Tmr_GyrZStall_Tick = 0;
 	}
 }
 
-/* 更新擦窗机电流数据 */
-void UpdateWinClnCurr(void)
+char *pChTallCause = "";
+uint8 u8StallCode = 0;
+/* 获取擦窗机堵转状态 */
+void GetMotorStallStatus(void)
 {
-	/* 右电机过流判断与运行电流记录 */
-	if(abs(g_YKCCtr.i8Timer_RightAct) > 10) {	/* 电机运动稳定了再进行过流判断并保存正常行驶的电流 */
-		if((fabs(g_YKCCtr.fRightDuty) > MAX_DUTY_RATIO - 0.03f)) {	/* 记录满占空比时的电流 */
-			F32QueueEnter(&g_MsrRes.qRightMotorCurrHistory, g_MsrRes.fRightCur);		/* 电流入队 */
-			float32 fK = GetF32QueueSlope(&g_MsrRes.qRightMotorCurrHistory, PERIOD_CTR_TASK_ms / 1000.0f, 10);
-#if DEBUG_PRINT_CLN_STATE
-			printf("right K = %.4f\n", fK);
-#endif
-			if(fK > MOTOR_SLOPE_THRESHOLD) {		/* 疑似堵转, 记录当前的最大电流值 */
-				g_YKCCtr.fRightHitCurrent = F32QueueGetMaxElement(&g_MsrRes.qRightMotorCurrHistory);
-				g_YKCCtr.u8Tmr_RightOverCurrent_10ms++;
-			}
-		}
-	} else {	/* 可能是换方向了, 将当前记录的电流值清除, 重新记录 */
-		F32QueueClear(&g_MsrRes.qRightMotorCurrHistory);
-		g_YKCCtr.u8Tmr_RightOverCurrent_10ms = 0;
-	}
-
-	if(abs(g_YKCCtr.i8Timer_LeftAct) > 10) {
-		/* 电流入队 */
-		if((fabs(g_YKCCtr.fLeftDuty) > MAX_DUTY_RATIO - 0.03f)) {	/* 记录满占空比时的电流 */
-			F32QueueEnter(&g_MsrRes.qLeftMotorCurrHistory, g_MsrRes.fLeftCur);
-			float32 fK = GetF32QueueSlope(&g_MsrRes.qLeftMotorCurrHistory, PERIOD_CTR_TASK_ms / 1000.0f, 10);
-#if DEBUG_PRINT_CLN_STATE
-			printf("left K = %.4f\n", fK);
-#endif
-			if(fK > MOTOR_SLOPE_THRESHOLD) {
-				g_YKCCtr.fLeftHitCurrent = F32QueueGetMaxElement(&g_MsrRes.qLeftMotorCurrHistory);
-				g_YKCCtr.u8Tmr_LeftOverCurrent_10ms++;
-			}
+	u8StallCode = 0;
+	g_YKCCtr.bLeftStall = FALSE;
+	g_YKCCtr.bRightStall = FALSE;
+	if(g_Bmi270Comm.bIsStop && ((fabsf(g_YKCCtr.fRightDuty) > 0.5f) || (fabsf(g_YKCCtr.fRightDuty) > 0.5f))) {
+		/* 陀螺仪中断判断堵转 */
+		if(g_YKCCtr.u8Tmr_GyroStall_Tick > 5) {	/* 陀螺仪静止5个周期后才认为发生了堵转 */
+			g_YKCCtr.bLeftStall = TRUE;
+			g_YKCCtr.bRightStall = TRUE;
+			g_YKCCtr.u8Tmr_GyroStall_Tick = 5;
+//			printf("【中断】\n");
+			u8StallCode |= 0x01;
+			pChTallCause = "[中断]";
+		} else {
+			g_YKCCtr.u8Tmr_GyroStall_Tick++;
 		}
 	} else {
-		F32QueueClear(&g_MsrRes.qLeftMotorCurrHistory);
-		g_YKCCtr.u8Tmr_LeftOverCurrent_10ms = 0;
+		g_YKCCtr.u8Tmr_GyroStall_Tick = 0;
+	}
+	if(g_YKCCtr.u8Tmr_GyrZStall_Tick > 10) {	/* 陀螺仪Z轴方向上角速度不变判断堵转 */
+		g_YKCCtr.bLeftStall = TRUE;
+		g_YKCCtr.bRightStall = TRUE;
+//		printf("【角速度不变】\n");
+		pChTallCause = "[角速度不变]";
+		u8StallCode |= 0x02;
+	} else if(g_YKCCtr.bGyrZIsStall) {				/* 陀螺仪Z轴方向的角速度变化过快 堵转(不稳定，尤其是转弯时角速度一定会变化特别大，暂时不使用) */
+//		g_YKCCtr.bLeftStall = TRUE;
+//		g_YKCCtr.bRightStall = TRUE;
+//		printf("【角速度瞬变】\n");
+//		pChTallCause = "[角速度瞬变]";
+	}
+	if(g_MsrRes.fRightCur > 1.5f) {		/* 电流判断堵转 */
+		g_YKCCtr.bRightStall = TRUE;
+//		printf("【电流】\n");
+		pChTallCause = "[右电流]";
+		u8StallCode |= 0x04;
+	}
+	if(g_MsrRes.fLeftCur > 1.5f) {
+		g_YKCCtr.bLeftStall = TRUE;
+//		printf("【电流】\n");
+		pChTallCause = "[左电流]";
+		u8StallCode |= 0x08;
+	}
+}
+
+/* 偏航自检 */
+BOOL Yaw_SelfCheck(void)
+{
+	float32 fAngleErr = fabs(g_YKCCtr.fAimedAngle - g_YKCCtr.fAngle);
+	if(g_YKCCtr.u8ClnSeqNo == g_YKCCtr.u8ClnSeqNo_last && (fAngleErr > 5.0f)) {	/* 脚本没变换、检测偏航 */
+		if(g_YKCCtr.fFirstYawAngle == 0.0f) {
+			g_YKCCtr.fFirstYawAngle = g_YKCCtr.fAngle;
+		}
+		if(fAngleErr > g_YKCCtr.fAngleErr_last) {			/* 误差角度持续增大 */
+			g_YKCCtr.u8AngleErr_Tick++;
+		} else if(g_YKCCtr.fAimedAngle < g_YKCCtr.fFirstYawAngle) {	/* 往左偏 */
+			if(g_YKCCtr.fAngle < g_YKCCtr.fFirstYawAngle) {			/* 没在偏航中 */
+				g_YKCCtr.u8AngleErr_Tick = 0;
+				g_YKCCtr.fFirstYawAngle = g_YKCCtr.fAngle;
+			}
+		} else {		/* 往右偏 */
+			if(g_YKCCtr.fAngle > g_YKCCtr.fFirstYawAngle) { 		/* 没在偏航中 */
+				g_YKCCtr.u8AngleErr_Tick = 0;
+				g_YKCCtr.fFirstYawAngle = g_YKCCtr.fAngle;
+			}
+		}
+		g_YKCCtr.fAngleErr_last = fAngleErr;
+	} else {		/* 脚本变换了、重新计数 */
+		g_YKCCtr.u8AngleErr_Tick = 0;
+		g_YKCCtr.fAngleErr_last = 0;
+		g_YKCCtr.fFirstYawAngle = 0;
+	}
+
+	if(g_YKCCtr.u8AngleErr_Tick > 200) {	/* 持续200个任务周期(10ms)往远离目标角度的方向偏，认为是偏航了 */
+		Mp3Speak(VOICE_CPU_TEMPERATURE_ERROR, 1);
+		g_YKCCtr.u8AngleErr_Tick = 0;
 	}
 }
 
@@ -622,17 +704,14 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 {
 //	g_YKCCtr.bDisableCliff = FALSE;
 
-//	ControlLed(0);
 	int8 i;
-
 	/* 计算值 */
 	ProcDInFilter();		/* 开入滤波 */
 
-//#if CLIFF_DEACTIVE
-	if(g_YKCCtr.bDisableCliff) {
+	if(g_DebugConf.u8CliffSwitch == 0) {
 		g_Ctr.u32DinDat |= (1 << CLIFF_FRONT_LEFT_DInNo) | (1 << CLIFF_FRONT_RIGHT_DInNo) | (1 << CLIFF_REAR_LEFT_DInNo) | (1 << CLIFF_REAR_RIGHT_DInNo);
 	}
-//#endif
+
 	g_MsrRes.fLastRightCur = g_MsrRes.fRightCur;
 	g_MsrRes.fLastLeftCur = g_MsrRes.fLeftCur;
 	CalDCSig(DCPWR_VOL_DCSigNo, 10, 1, &g_MsrRes.fDCPwrVol, NULL);
@@ -647,6 +726,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	/* 外设 */
 	UpdateAir();		/* 更新气压计 */
 	UpdateIMU();		/* 更新IMU状态 */
+
 	/* 保护: 需要躲过刚启动、正反转切换的时候，另：履带电机堵转>=1.2A，正常工作电流0.5A */
 	if(g_YKCCtr.fRightDuty > 0) {
 		if(g_YKCCtr.i8Timer_RightAct < 0) {
@@ -687,41 +767,27 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		g_MsrRes.fLeftMaxI = g_MsrRes.fLeftCur;
 	}
 
-	UpdateWinClnCurr();
 	UpdateWinClnGyrZ();
-
-//	g_YKCCtr.bRightStall = ((g_YKCCtr.u8Tmr_GyrZStall_10ms > 10) || (g_YKCCtr.u8Tmr_RightOverCurrent_10ms > 3) || (IsMeetWheelStallCur(g_MsrRes.fRightCur)));
-//	g_YKCCtr.bLeftStall = ((g_YKCCtr.u8Tmr_GyrZStall_10ms > 10) || (g_YKCCtr.u8Tmr_LeftOverCurrent_10ms > 3) || (IsMeetWheelStallCur(g_MsrRes.fLeftCur)));
-
-//	g_YKCCtr.bRightStall = ((g_YKCCtr.u8Tmr_GyrZStall_10ms > 10) || (IsMeetWheelStallCur(g_MsrRes.fRightCur)));
-//	g_YKCCtr.bLeftStall = ((g_YKCCtr.u8Tmr_GyrZStall_10ms > 10) || (IsMeetWheelStallCur(g_MsrRes.fLeftCur)));
-	g_YKCCtr.bRightStall = FALSE;
-	g_YKCCtr.bLeftStall = FALSE;
-
-	/* 角速度瞬时碰撞判断堵转暂时不用，陀螺仪还是有点问题 */
-//	g_YKCCtr.bRightStall = (g_YKCCtr.bGyrZIsStall || (g_YKCCtr.u8Tmr_GyrZStall_10ms > 10) || (g_YKCCtr.u8Tmr_RightOverCurrent_10ms > 2));
-//	g_YKCCtr.bLeftStall = (g_YKCCtr.bGyrZIsStall || (g_YKCCtr.u8Tmr_GyrZStall_10ms > 10) || (g_YKCCtr.u8Tmr_LeftOverCurrent_10ms > 2));
-
-//	BOOL bCurOv = InverseTimeVerify(ABN_T_INV_MOTOR_RIGHT_No, 0, 3, 0.05, g_MsrRes.fRightCur, 1, MSG_NULL)
-//				|| InverseTimeVerify(ABN_T_INV_MOTOR_LEFT_No, 0, 3, 0.05, g_MsrRes.fLeftCur, 1, MSG_NULL);
-	
+	GetMotorStallStatus();		/* 获取电机的堵转状态. */
 	
 	/* 开入定时：悬崖开关，释放认为是信号 */
 	for(i = MAX_DIN_NUM - 1; i > HIT_REAR_RIGHT_DInNo; i--) {
 		if(g_Ctr.u32DinDat & (1<<i)) {		/* 悬崖开关处于压缩状态 */
-			g_YKCCtr.uTimer_DInSig_10ms[i] = 0;
-		} else if(g_YKCCtr.uTimer_DInSig_10ms[i] < 0xFFFF) {	/* 悬崖开关处于释放状态 */
-			g_YKCCtr.uTimer_DInSig_10ms[i]++;
+			g_YKCCtr.uTimer_DInSig_Tick[i] = 0;
+		} else if(g_YKCCtr.uTimer_DInSig_Tick[i] < 0xFFFF) {	/* 悬崖开关处于释放状态 */
+			g_YKCCtr.uTimer_DInSig_Tick[i]++;
 		}
 	}
+
 	/* 开入定时：其他开关，按下认为是信号 */
 	for(i = HIT_REAR_RIGHT_DInNo; i >= 0; i--) {
 		if((g_Ctr.u32DinDat & (1<<i)) == 0) {
-			g_YKCCtr.uTimer_DInSig_10ms[i] = 0;
-		} else if(g_YKCCtr.uTimer_DInSig_10ms[i] < 0xFFFF) {
-			g_YKCCtr.uTimer_DInSig_10ms[i]++;
+			g_YKCCtr.uTimer_DInSig_Tick[i] = 0;
+		} else if(g_YKCCtr.uTimer_DInSig_Tick[i] < 0xFFFF) {
+			g_YKCCtr.uTimer_DInSig_Tick[i]++;
 		}
 	}
+
 #if DEBUG_PRINT_CLN_STATE
 	WinClnDebug();
 #endif
@@ -750,8 +816,6 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	g_YKCCtr.i32X += F32ToI32(fTrip*sinf(fAngleAvr));
 	g_YKCCtr.i32Y += F32ToI32(fTrip*cosf(fAngleAvr));
 
-//	printf("fAngle = %.5f\n", fAngle);
-
 	/* 观察运动目标完成情况：行进 */
 	int32 i32Forward = g_YKCCtr.i32Forward;
 	/* 行进目标为0(CLN_ST_J也是没有明确的行进目标)，则看角度是否扫过目标--这个地方，逻辑尚需进一步完善 */
@@ -768,7 +832,8 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		{
 			i32Forward = 0;
 			g_YKCCtr.fAimedAngle = fAngle;	/* 行进到位，不必管角度(哪怕角度略有偏差)，都认为完成当前任务 */
-		} else if((g_YKCCtr.WinClnST == CLN_ST_CTURN)	/* CTurn转角到位也是可以的 */
+		} else if(((g_YKCCtr.WinClnST == CLN_ST_DOWN_CTURN)	/* CTurn转角到位也是可以的 */
+				|| (g_YKCCtr.WinClnST == CLN_ST_UP_CTURN))
 			&& (((g_YKCCtr.fAngle < g_YKCCtr.fAimedAngle) && (g_YKCCtr.fAimedAngle < fAngle))
 				|| ((g_YKCCtr.fAngle > g_YKCCtr.fAimedAngle) && (g_YKCCtr.fAimedAngle > fAngle))))
 		{
@@ -785,11 +850,19 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	}
 
 	/* 启动、停止 */
-	if(g_YKCCtr.uTimer_DInSig_10ms[START_STOP_CMD_DInNo] == 1) {	/* 按钮被按下 */
+	if(g_YKCCtr.uTimer_DInSig_Tick[START_STOP_CMD_DInNo] == 1) {	/* 按钮被按下 */
+//		/* 新增 */
+//		Mp3Speak(u8SpeakNo, FALSE);
+//		u8SpeakNo++;
+//		if(u8SpeakNo > VOICE_BYEBYE) {
+//			u8SpeakNo = 0;
+//		}
+//		return ;
+//		/* 新增结束 */
 		if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
 			g_YKCCtr.u8DebugNo++;
 			g_YKCCtr.WinClnST = CLN_ST_HANG;
-			TtsSpeak(VOICE_WELCOM, FALSE);		/* 欢迎使用 */
+			Mp3Speak(VOICE_WELCOM, TRUE);		/* 欢迎使用 */
 			//g_YKCCtr.WinClnST = CLN_ST_TEST;
 		} else if(g_YKCCtr.WinClnST == CLN_ST_STOP) {
 			g_YKCCtr.WinClnST = g_YKCCtr.WinClnST_beforeSTOP;
@@ -797,9 +870,9 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			g_YKCCtr.WinClnST_beforeSTOP = g_YKCCtr.WinClnST;
 			g_YKCCtr.WinClnST = CLN_ST_STOP;
 		}
-	} else if(g_YKCCtr.uTimer_DInSig_10ms[START_STOP_CMD_DInNo] > 250) {	/* 按钮持续了2.5秒 */
+	} else if(g_YKCCtr.uTimer_DInSig_Tick[START_STOP_CMD_DInNo] > 250) {	/* 按钮持续了2.5秒 */
 		if(g_YKCCtr.WinClnST != CLN_ST_IDLE) {
-			TtsSpeak(VOICE_BYEBYE, FALSE);
+			Mp3Speak(VOICE_BYEBYE, TRUE);
 			g_YKCCtr.WinClnST = CLN_ST_IDLE;
 			g_YKCCtr.u8Tmr_PumpFullSpeed_10ms = PUMP_TICK_TO_FULL_SPEED;
 		}
@@ -808,6 +881,11 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	if(WinClnCompleteHang() && g_YKCCtr.WinClnST > CLN_ST_END) {	/* 擦窗机完全悬空 可能意外掉落 */
 		g_YKCCtr.WinClnST = CLN_ST_IDLE;
 	}
+
+//	/* 运动自检 */
+//	if(g_YKCCtr.WinClnST > CLN_ST_JUMP) {
+//		Yaw_SelfCheck();
+//	}
 
 	/* 运动决策 */
 	switch(g_YKCCtr.WinClnST) {
@@ -821,25 +899,18 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			break;
 
 		case CLN_ST_END:			/* 清洁结束:真空泵带电，需要保持吸力 */
-//			ControlLed(LED_COLOR_GREEN);
-			TtsSpeak(VOICE_FINISHCLEAN, FALSE);
+			ControlLed(LED_COLOR_GREEN);
+			Mp3Speak(VOICE_FINISHCLEAN, FALSE);
 			g_YKCCtr.u8ClnSeqNo = 0;
-			//g_YKCCtr.fAimedAngle = 0;
-			//g_YKCCtr.i32Forward = 0;
 			break;
 
 		case CLN_ST_HANG:			/* 悬空:真空泵上电，但是还没有贴到窗台上 */
 			ControlLed(LED_COLOR_RED);
-			if((g_YKCCtr.uTimer_DInSig_10ms[START_STOP_CMD_DInNo] == 0) && (g_YKCCtr.u8Tmr_PumpFullSpeed_10ms == 0)) { 		/* 放开开关按钮 */
-//				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]			/* 四个角贴上 */
-//					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
-//					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-//					&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo])
+			if((g_YKCCtr.uTimer_DInSig_Tick[START_STOP_CMD_DInNo] == 0) && (g_YKCCtr.u8Tmr_PumpFullSpeed_10ms == 0)) { 		/* 放开开关按钮 */
 				if(WinClnSectionHang()) {		/* 至少有一个脚悬空就继续等待 */
-					TtsSpeak(VOICE_CLIFF_DETECTED, FALSE);
+					Mp3Speak(VOICE_CLIFF_DETECTED, FALSE);
 				} else {
 					NextWinClnSTBySeq(CLN_SEQ_START_No);
-//					NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_R2L_No);
 				}
 			}
 			break;
@@ -849,7 +920,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			break;
 
 		case CLN_ST_BLANK:		/* 空白 */
-			ControlLed(LED_COLOR_CRAN);
+			ControlLed(LED_COLOR_CYAN);
 			NextWinClnSTBySeq(0);
 			break;
 
@@ -858,60 +929,78 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			break;
 
 		case CLN_ST_DRIVE:		/* 直线+旋转 */
-			ControlLed(LED_COLOR_CRAN);
+			ControlLed(LED_COLOR_CYAN);
 			if(((g_YKCCtr.i32Forward == 0) && (g_YKCCtr.fAimedAngle == g_YKCCtr.fAngle))
 				|| ((g_YKCCtr.i32Forward > 0)
-					&& ((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-							&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall))
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]
-							&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo])))
+					&& ((g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| (g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| ((g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
+							&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall))
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo]
+							&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo])))
 				|| ((g_YKCCtr.i32Forward < 0)
-					&& ((g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-							&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall))
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-							&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]))))
+					&& ((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| ((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
+							&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall))
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo]
+							&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo]))))
 			{
 				NextWinClnSTBySeq(0);
 			}
 			break;
 
 		case CLN_ST_JTURN:		/* J弯 (直角转弯) */
-			ControlLed(LED_COLOR_CRAN);
+			ControlLed(LED_COLOR_CYAN);
 			if((fabsf(g_YKCCtr.fAimedAngle - g_YKCCtr.fAngle) < 5)
 				|| ((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward > 0)
-					&& (((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-							&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall))
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]
-							&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo])))
+					&& (((g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
+							&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall))
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo]
+							&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo])))
 				|| ((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward < 0)
-					&& (((g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-							&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall))
-						|| (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-							&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]))))
+					&& (((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
+							&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall))
+						|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo]
+							&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo]))))
 			{
 				NextWinClnSTBySeq(0);
 			}
 			break;
 
-		case CLN_ST_CTURN:		/* S弯 (倒U型弯) */
-			ControlLed(LED_COLOR_CRAN);
+		case CLN_ST_UP_CTURN:		/* 向上S弯 (倒U型弯) */
+			ControlLed(LED_COLOR_CYAN);
+			/* 到顶了：前进的话，右前触碰到边沿；后退的话，右后触碰到边沿 */
+			if((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward > 0)
+				&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_FRONT_DInNo]
+					|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo] > 5)))		/* 防止误判 */
+			{
+				NextWinClnSTBySeq(CLN_SEQ_WIN_TOP_R2L_No);
+			} else if((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward < 0)
+				&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_REAR_DInNo]
+					|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo] > 5)))		/* 防止误判 */
+			{
+				NextWinClnSTBySeq(CLN_SEQ_WIN_TOP_L2R_No);
+			} else if(g_YKCCtr.fAimedAngle == g_YKCCtr.fAngle) {	/* 倒也没必要进行碰撞判断、即使卡住了，走到指定的距离就恢复了 */
+				NextWinClnSTBySeq(0);
+			}
+			break;
+
+		case CLN_ST_DOWN_CTURN:		/* 向下S弯 (倒U型弯) */
+			ControlLed(LED_COLOR_CYAN);
 			/* 到底了：前进的话，左前触碰到边沿；后退的话，左后触碰到边沿 */
 			if((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward > 0)
-				&& (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]
-					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo]))
+				&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_FRONT_DInNo]
+					|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo] > 5)))		/* 防止误判 */
 			{
 				NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_R2L_No);
 			} else if((cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward < 0)
-				&& (g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]
-					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo]))
+				&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_REAR_DInNo]
+					|| (g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo] > 5)))		/* 防止误判 */
 			{
 				NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_L2R_No);
 			} else if(g_YKCCtr.fAimedAngle == g_YKCCtr.fAngle) {
@@ -919,97 +1008,35 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			}
 			break;
 
-		case CLN_ST_EXP_UP_FORWARD_R:	/* 探索上沿靠右前进 */
-			if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]		/* 触碰到边沿 */
-				|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
-				|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-					&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
-			{
-				NextWinClnSTBySeq(0);
-			} else if(g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_FRONT_DInNo] > 5) { /* 查看侧右前是否发生碰撞，说明接近靠近了上沿，开始顶部清洁. */
-				NextWinClnSTBySeq(11);
-			} else {	/* 没有碰到边沿，并且没有靠近边沿，并且角度没有偏离太狠就加大角度继续前进 */
-				g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 10;
-			}
-			break;
-		case CLN_ST_EXP_UP_BACK_R:	/* 探索上沿靠右后退 */
-			if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]	/* 触碰到边沿 */
-				|| g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]
-				|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-					&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
-			{
-				NextWinClnSTBySeq(0);
-			}  else if(g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_REAR_DInNo] > 5) { /* 查看侧右后是否发生碰撞，说明接近靠近了上沿，开始顶部清洁. */
-				NextWinClnSTBySeq(12);
-			} else {	/* 没有碰到边沿，并且没有靠近边沿，加大角度继续前进 */
-				g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 10;
-			}
-			break;
-
 		case CLN_ST_EXP_FORWARD_L:	/* 靠左前行，左边需要被不断触发 */
 		case CLN_ST_EXP_FORWARD_R:	/* 靠右前行，右边需要被不断触发 */
-			ControlLed(LED_COLOR_CRAN);
+			ControlLed(LED_COLOR_CYAN);
 			/* 保护性编程，不应该走到这步 */
 			if(g_YKCCtr.u8ClnSeqNo >= sizeof(cnst_ClnSTSeq)/sizeof(CLN_ST_SEQ)) {
 				/* 到头: 悬崖传感器都悬空，或者前面碰撞传感器都碰到 */
-			} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]	/* 触碰到边沿 */
-						&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo])
-					|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
-					//|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-					//|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms))
+			} else if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo]	/* 触碰到边沿 */
+						&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo])
+					|| ((g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_LEFT_DInNo] || g_YKCCtr.bLeftStall)
+						&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
 			{
 				NextWinClnSTBySeq(0);
 			} else if(g_YKCCtr.WinClnST == CLN_ST_EXP_FORWARD_L) {	/* 靠左前行，左边需要被不断触发 */
 				/* 左前碰到，朝右拐 */
-//				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo]
-//					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo])
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
-////					g_YKCCtr.i32Forward = 1000;
-//				/* 后部也没有碰到，再左拐 */
-//				} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo] == 0)
-//						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo] == 0))
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
-////					g_YKCCtr.i32Forward = 1000;
-//				} else {
-////					g_YKCCtr.i32Forward = 1000;
-//				}
-				/* 左前碰到，朝右拐 */
-				if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo] > 10)
-					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo])
+				if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_LEFT_DInNo] > 10)
+					|| g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_FRONT_DInNo])
 				{
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
-//					g_YKCCtr.i32Forward = 1000;
 				/*  */
 				} else {	/* 左前没碰到，朝左拐 */
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
 				}
 			} else {	/* 靠右前行，右边需要被不断触发 */
-//				/* 右前碰到，朝左拐 */
-//				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo]
-//					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_FRONT_DInNo])
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
-////					g_YKCCtr.i32Forward = 1000;
-//				/* 后部也没有碰到，再右拐 */
-//				} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo] == 0)
-//						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_REAR_DInNo] == 0))
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
-////					g_YKCCtr.i32Forward = 1000;
-//				} else {
-////					g_YKCCtr.i32Forward = 1000;
-//				}
 				/* 右前碰到，朝左拐 */
-				if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo] > 10)
-					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_FRONT_DInNo])
+				if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_FRONT_RIGHT_DInNo] > 10)
+					|| g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_FRONT_DInNo])
 				{
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
-//					g_YKCCtr.i32Forward = 1000;
-					/* 右前没碰到，朝右拐 */
-				}  else {
+				}  else {		/* 右前没碰到，朝右拐 */
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
 				}
 			}
@@ -1017,65 +1044,32 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 
 		case CLN_ST_EXP_BACK_L:	/* 靠左退行，左边需要被不断触发 */
 		case CLN_ST_EXP_BACK_R:	/* 靠右退行，右边需要被不断触发 */
-			ControlLed(LED_COLOR_CRAN);
+			ControlLed(LED_COLOR_CYAN);
 			/* 保护性编程，不应该走到这步 */
 			if(g_YKCCtr.u8ClnSeqNo >= sizeof(cnst_ClnSTSeq)/sizeof(CLN_ST_SEQ)) {
 				/* 到头: 悬崖传感器都悬空，或者前面碰撞传感器都碰到 */
-			} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]	/* 触碰到边沿 */
-						&& g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo])
-					|| ((g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
-					//|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-					//|| (g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms))
+			} else if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo]	/* 触碰到边沿 */
+						&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo])
+					|| ((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
+						&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
 			{
 				NextWinClnSTBySeq(0);
 			} else if(g_YKCCtr.WinClnST == CLN_ST_EXP_BACK_L) {/* 靠左退行，左边需要被不断触发 */
 				/* 左后碰到，朝右拐 */
-//				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo]	/* 左后悬空或者侧左后碰撞 */
-//					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo])
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
-////					g_YKCCtr.i32Forward = -1000;
-//				/* 前部也没有碰到，再左拐 */
-//				} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_LEFT_DInNo] == 0)	/* 左前不悬空并且侧左前不碰撞 */
-//						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo] == 0))
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
-////					g_YKCCtr.i32Forward = -1000;
-//				} else {	/* 否则，朝左拐 */
-////					g_YKCCtr.i32Forward = -1000;
-//				}
-				if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_LEFT_DInNo] > 10)	/* 左后悬空或者侧左后碰撞 */
-					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo])
+				if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo] > 10)	/* 左后悬空或者侧左后碰撞 */
+					|| g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_REAR_DInNo])
 				{
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
-//					g_YKCCtr.i32Forward = -1000;
 				/* 前部也没有碰到，再左拐 */
 				}  else {	/* 否则，朝左拐 */
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
 				}
 			} else {	/* 靠右退行，右边需要被不断触发 */
-//				/* 右后碰到，朝左拐 */
-//				if(g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo]
-//					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_REAR_DInNo])
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
-////					g_YKCCtr.i32Forward = -1000;
-//				/* 前部也没有碰到，再右拐 */
-//				} else if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_FRONT_RIGHT_DInNo] == 0)
-//						&& (g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_FRONT_DInNo] == 0))
-//				{
-//					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
-////					g_YKCCtr.i32Forward = -1000;
-//				} else {
-////					g_YKCCtr.i32Forward = -1000;
-//				}
 				/* 右后碰到，朝左拐 */
-				if((g_YKCCtr.uTimer_DInSig_10ms[CLIFF_REAR_RIGHT_DInNo] > 10)
-					|| g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_REAR_DInNo])
+				if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo] > 10)
+					|| g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_REAR_DInNo])
 				{
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle - 5;
-//					g_YKCCtr.i32Forward = -1000;
 				/* 前部也没有碰到，再右拐 */
 				}  else {
 					g_YKCCtr.fAimedAngle = cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].i8Angle + 5;
@@ -1088,26 +1082,26 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			break;
 	}
 
-	/* 临时性保护代码，避免到了边沿还继续 */
-	if(((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_LEFT_DInNo)) == 0)	/* 四面全悬空，应该是反过来了 */
-		&& ((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_RIGHT_DInNo)) == 0)
-		&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_LEFT_DInNo)) == 0)
-		&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_RIGHT_DInNo)) == 0))
-	{		
-	} else if(((g_YKCCtr.i32Forward > 0)	/* 前进 */
-		&& ((((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_LEFT_DInNo)) == 0)	/* 触碰到边沿 */
-				&& ((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_RIGHT_DInNo)) == 0))
-			|| ((g_Ctr.u32DinDat & (1<<HIT_FRONT_LEFT_DInNo))
-				&& (g_Ctr.u32DinDat & (1<<HIT_FRONT_RIGHT_DInNo)))))
-	|| ((g_YKCCtr.i32Forward < 0)	/* 后退 */
-		&& ((((g_Ctr.u32DinDat & (1<<CLIFF_REAR_LEFT_DInNo)) == 0)	/* 触碰到边沿 */
-				&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_RIGHT_DInNo)) == 0))
-			|| ((g_Ctr.u32DinDat & (1<<HIT_REAR_LEFT_DInNo))
-				&& (g_Ctr.u32DinDat & (1<<HIT_REAR_RIGHT_DInNo))))))
-	{
-//		g_YKCCtr.i32Forward = 0;
-		//g_YKCCtr.WinClnST = CLN_ST_STOP;
-	}
+//	/* 临时性保护代码，避免到了边沿还继续 */
+//	if(((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_LEFT_DInNo)) == 0)	/* 四面全悬空，应该是反过来了 */
+//		&& ((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_RIGHT_DInNo)) == 0)
+//		&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_LEFT_DInNo)) == 0)
+//		&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_RIGHT_DInNo)) == 0))
+//	{
+//	} else if(((g_YKCCtr.i32Forward > 0)	/* 前进 */
+//		&& ((((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_LEFT_DInNo)) == 0)	/* 触碰到边沿 */
+//				&& ((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_RIGHT_DInNo)) == 0))
+//			|| ((g_Ctr.u32DinDat & (1<<HIT_FRONT_LEFT_DInNo))
+//				&& (g_Ctr.u32DinDat & (1<<HIT_FRONT_RIGHT_DInNo)))))
+//	|| ((g_YKCCtr.i32Forward < 0)	/* 后退 */
+//		&& ((((g_Ctr.u32DinDat & (1<<CLIFF_REAR_LEFT_DInNo)) == 0)	/* 触碰到边沿 */
+//				&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_RIGHT_DInNo)) == 0))
+//			|| ((g_Ctr.u32DinDat & (1<<HIT_REAR_LEFT_DInNo))
+//				&& (g_Ctr.u32DinDat & (1<<HIT_REAR_RIGHT_DInNo))))))
+//	{
+////		g_YKCCtr.i32Forward = 0;
+//		//g_YKCCtr.WinClnST = CLN_ST_STOP;
+//	}
 
 	/* 运动执行:依据运动目标，解算当前步骤所需要的履带动作 */
 	float32 fRightTrip = 0;
@@ -1130,21 +1124,21 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			/* 前进方向侧面限位开关动作需要特别处理：要不然会把前进方向的行程开关往后拉，造成前面两个碰撞开关虚假信号 */
 			if(cnst_ClnSTSeq[g_YKCCtr.u8ClnSeqNo].iForward > 0) {
 				if(g_YKCCtr.fAimedAngle > g_YKCCtr.fAngle) {/* 前进左弯:注意右前不要发生剐蹭，如果发生，需要加大转弯角度 */
-					if(g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_FRONT_DInNo]) {
+					if(g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_FRONT_DInNo]) {
 						fAngle += 10;
 					}
 				} else {	/* 前进右弯:注意左前不要发生剐蹭，如果发生，需要加大转弯角度 */
-					if(g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo]) {
+					if(g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_FRONT_DInNo]) {
 						fAngle += 10;
 					}
 				}
 			} else {
 				if(g_YKCCtr.fAimedAngle < g_YKCCtr.fAngle) {/* 后退左弯:注意右后不要发生剐蹭，如果发生，需要加大转弯角度 */
-					if(g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_REAR_DInNo]) {
+					if(g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_REAR_DInNo]) {
 						fAngle += 10;
 					}
 				} else {	/* 后退右弯:注意左后不要发生剐蹭，如果发生，需要加大转弯角度 */
-					if(g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo]) {
+					if(g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_REAR_DInNo]) {
 						fAngle += 10;
 					}
 				}
@@ -1204,8 +1198,8 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			|| ((fRightTrip > 0) && (fForward < 0))
 			|| ((fRightTrip < 0) && (fForward > 0))
 			|| ((g_YKCCtr.WinClnST != CLN_ST_JTURN)
-				&& (((g_YKCCtr.i32Forward > 0) && g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo])
-					|| ((g_YKCCtr.i32Forward < 0) && g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo]))))
+				&& (((g_YKCCtr.i32Forward > 0) && g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_RIGHT_DInNo])
+					|| ((g_YKCCtr.i32Forward < 0) && g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo]))))
 		{
 			fRightDuty = 0;
 			fLeftDuty = 1;
@@ -1213,8 +1207,8 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			|| ((fLeftTrip > 0) && (fForward < 0))
 			|| ((fLeftTrip < 0) && (fForward > 0))
 			|| ((g_YKCCtr.WinClnST != CLN_ST_JTURN)
-				&& (((g_YKCCtr.i32Forward > 0) && g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo])
-					|| ((g_YKCCtr.i32Forward < 0) && g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo]))))
+				&& (((g_YKCCtr.i32Forward > 0) && g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_LEFT_DInNo])
+					|| ((g_YKCCtr.i32Forward < 0) && g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo]))))
 		{
 			fRightDuty = 1;
 			fLeftDuty = 0;
@@ -1234,6 +1228,17 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 				fPID_P = (fVr2lAimErr - g_YKCCtr.fVr2lAimErr_last) * VACUUM_AIM_ERR_TOLERANCE;
 				fAim_R2L = fabsf(g_YKCCtr.fRightDuty/g_YKCCtr.fLeftDuty) + fPID_P + fPID_I;
 				g_YKCCtr.fVr2lAimErr_last = fVr2lAimErr;
+
+//				/* 新增pid算法 */
+//				float32 fVr2lAimErr = fAim_R2L - g_MsrRes.fRightFreq/g_MsrRes.fLeftFreq;
+//				fVr2lAimErr = 0.95f * g_YKCCtr.fVr2lAimErr_last + 0.05f * fVr2lAimErr;
+//				if(fVr2lAimErr < 0.15f) {
+//					fPID_P = 0;
+//				} else {
+//					fPID_P = g_YKCCtr.fVr2lAimErr_last * 0.01f;
+//				}
+//				g_YKCCtr.fVr2lAimErr_last = fVr2lAimErr;
+//				fAim_R2L += fPID_P + fPID_I;
 			}
 			if(fAim_R2L > 10) {	/* 限幅 */
 				fAim_R2L = 10;
@@ -1295,20 +1300,22 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			NextWinClnSTBySeq(CLN_SEQ_TEST_No);
 			break;
 		case IR_BTN_4:
-			NextWinClnSTBySeq(CLN_SEQ_TEST3_START_No);
+			NextWinClnSTBySeq(53);
 			break;
 		case IR_BTN_5:
+			NextWinClnSTBySeq(CLN_SEQ_TEST2_START_No);
 			break;
 		case IR_BTN_6:
+			NextWinClnSTBySeq(CLN_SEQ_TEST3_START_No);
 			break;
 		case IR_BTN_7:
 			NextWinClnSTBySeq(4);
 			break;
 		case IR_BTN_8:
-			g_YKCCtr.bDisableCliff = FALSE;
+			g_DebugConf.u8CliffSwitch = FALSE;
 			break;
 		case IR_BTN_9:
-			g_YKCCtr.bDisableCliff = TRUE;
+			g_DebugConf.u8CliffSwitch = TRUE;
 			break;
 		case IR_BTN_START:
 			/* 左边喷水 */
@@ -1333,21 +1340,27 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			g_YKCCtr.fRightDuty = -MAX_DUTY_RATIO;
 			break;
 		case IR_BTN_LEFT:
-//			g_YKCCtr.fLeftDuty = 1;
-//			g_YKCCtr.fRightDuty = -1;
 			g_YKCCtr.fLeftDuty = -MAX_DUTY_RATIO;
 			g_YKCCtr.fRightDuty = MAX_DUTY_RATIO;
 			break;
 		case IR_BTN_RIGHT:
-//			g_YKCCtr.fLeftDuty = -1;
-//			g_YKCCtr.fRightDuty = 1;
 			g_YKCCtr.fLeftDuty = MAX_DUTY_RATIO;
 			g_YKCCtr.fRightDuty = -MAX_DUTY_RATIO;
 			break;
 		case IR_BTN_OK:
-			g_YKCCtr.fLeftDuty = 0;
-			g_YKCCtr.fRightDuty = 0;
-			g_YKCCtr.WinClnST = CLN_ST_IDLE;
+//			g_YKCCtr.fLeftDuty = 0;
+//			g_YKCCtr.fRightDuty = 0;
+//			g_YKCCtr.WinClnST = CLN_ST_IDLE;
+			if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
+				g_YKCCtr.WinClnST = CLN_ST_HANG;
+				Mp3Speak(VOICE_WELCOM, TRUE);		/* 欢迎使用 */
+			} else if(g_YKCCtr.WinClnST == CLN_ST_STOP) {
+				g_YKCCtr.WinClnST = g_YKCCtr.WinClnST_beforeSTOP;
+			} else {
+				g_YKCCtr.WinClnST_beforeSTOP = g_YKCCtr.WinClnST;
+				g_YKCCtr.WinClnST = CLN_ST_STOP;
+			}
+			g_IRCtrl.u8TryCnt = 0;
 			break;
 		}
 	}
@@ -1359,20 +1372,20 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	//测试用：如果左卡住：粉色
 	//测试用：如果右卡住：红色
 #if 0
-	if((g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-			&& g_YKCCtr.uTimer_DInSig_10ms[HIT_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+	if((g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+			&& g_YKCCtr.uTimer_DInSig_Tick[HIT_FRONT_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 	{
 		ControlLed(LED_COLOR_YELLOW);
-	} else if((g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-			&& g_YKCCtr.uTimer_DInSig_10ms[HIT_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+	} else if((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+			&& g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 	{
 		ControlLed(LED_COLOR_GREEN);
-	} else if((g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_FRONT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-			&& g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_L_REAR_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+	} else if((g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_FRONT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+			&& g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_L_REAR_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 	{
 		ControlLed(LED_COLOR_BLUE);
-	} else if((g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_FRONT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
-			&& g_YKCCtr.uTimer_DInSig_10ms[HIT_SIDE_R_REAR_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+	} else if((g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_FRONT_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
+			&& g_YKCCtr.uTimer_DInSig_Tick[HIT_SIDE_R_REAR_DInNo] > SINGLE_SIG_VALID_TIME_10ms)
 	{
 		ControlLed(LED_COLOR_CRAN);
 	} else if(g_YKCCtr.bLeftStall) {
@@ -1381,29 +1394,13 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		ControlLed(LED_COLOR_RED);
 	}
 #endif
-	Board_DrvWheel(g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty);	/* 执行 */
+
+	Board_DrvWheel(g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty);	/* 运行电机 */
 
 	/* 真空泵 */
 	float32 fPumpPID_P, fPumpPID_I;
 	if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
-//		if(g_IRCtrl.u8TryCnt) {
-//			if(g_IRCtrl.u8BtnPressing == IR_BTN_5) {
-//				g_YKCCtr.fPumpDuty += 0.1f;
-//				if(g_YKCCtr.fPumpDuty > 1.0f) {
-//					g_YKCCtr.fPumpDuty = 1.0f;
-//				}
-//				g_IRCtrl.u8TryCnt = 0;
-//			} else if(g_IRCtrl.u8BtnPressing == IR_BTN_6) {
-//				g_YKCCtr.fPumpDuty -= 0.1f;
-//				if(g_YKCCtr.fPumpDuty < 0.0f) {
-//					g_YKCCtr.fPumpDuty = 0.0f;
-//				}
-//				g_IRCtrl.u8TryCnt = 0;
-//			}
-//		} else {
-//			g_YKCCtr.fPumpDuty = PUMP_IDEL_DUTY;
-//		}
-		g_YKCCtr.fPumpDuty = PUMP_IDEL_DUTY;
+		g_YKCCtr.fPumpDuty = PUMP_IDLE_DUTY;
 		g_YKCCtr.fAirPressure_PumpIdle = g_MsrRes.fAirPressure;
 	} else {
 		if(g_YKCCtr.fPumpDuty == 0) {	/* 刚启动 */
@@ -1430,7 +1427,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 						g_YKCCtr.WinClnST = CLN_ST_STOP;
 					#endif
 					}
-					TtsSpeak(VOICE_AIR_PRES_LOW, FALSE);
+					Mp3Speak(VOICE_AIR_PRES_LOW, FALSE);
 				}
 			} else {
 				g_YKCCtr.u8Tmr_VacummSuff_10ms = PUMP_TICK_VACUMM_SUFF;
@@ -1448,14 +1445,22 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	Board_DrvPump(g_YKCCtr.fPumpDuty);		/* 执行 */
 #endif
 
-	uint32 u32Flag = g_Ctr.u32DinDat + (g_YKCCtr.bRightStall<<14) + (g_YKCCtr.bLeftStall<<15)
-					 + (g_YKCCtr.WinClnST<<16) + (g_YKCCtr.u8ClnSeqNo<<24);
+//	uint32 u32Flag = g_Ctr.u32DinDat + (g_YKCCtr.bRightStall<<14) + (g_YKCCtr.bLeftStall<<15)
+//					 + (g_YKCCtr.WinClnST<<16) + (g_YKCCtr.u8ClnSeqNo<<24);
+//	uint32 u32Flag = u8StallCode + (g_YKCCtr.bRightStall<<14) + (g_YKCCtr.bLeftStall<<15)
+//					 + (g_YKCCtr.WinClnST<<16) + (g_YKCCtr.u8ClnSeqNo<<24);
+	uint32 u32Flag = (g_Ctr.u32DinDat & 0x3fff) + ((u8StallCode & 0b1111) << 14)
+						 + ((g_YKCCtr.WinClnST & 0b111111) << 18) + (g_YKCCtr.u8ClnSeqNo<<24);
 #if 0
 	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle, 
 				g_YKCCtr.fAngle, fRightTrip, fLeftTrip, g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fPitch, fd);
 #elif 1
-	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle, 
-				g_YKCCtr.fAngle, fRightTrip, fLeftTrip, g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fRightCur, g_MsrRes.fLeftCur);
+//	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle,
+//				g_YKCCtr.fAngle, fRightTrip, fLeftTrip, g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fRightCur, g_MsrRes.fLeftCur);
+	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle,
+					g_YKCCtr.fAngle, g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure, g_YKCCtr.fPumpDuty,
+					g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fRightCur, g_MsrRes.fLeftCur);
+
 
 #elif 0
 	Rec_DebugPack(u32Flag, g_MsrRes.fAirPressure, fPumpPID_P, fPumpPID_I, g_YKCCtr.fPumpDuty, g_MsrRes.fPumpFreq, 0, 0, 0, 0, 0, 0);
@@ -1491,7 +1496,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	if(g_YKCCtr.i8Tmr_Spray_Front_10ms == 0) {
 		GPIO_write(TOP_WATER_JET_RelayNo, 0);
 		if(!GPIO_read(LOW_LIQUID_WRN_DInNo)) {
-			TtsSpeak(VOICE_LIQUID_LOW, TRUE);
+			Mp3Speak(VOICE_LIQUID_LOW, FALSE);
 		}
 		g_YKCCtr.i8Tmr_Spray_Front_10ms = -1;
 	} else if(g_YKCCtr.i8Tmr_Spray_Front_10ms > 0) {
@@ -1501,21 +1506,16 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	if(g_YKCCtr.i8Tmr_Spray_Back_10ms == 0) {
 		GPIO_write(BOT_WATER_JET_RelayNo, 0);
 		if(!GPIO_read(LOW_LIQUID_WRN_DInNo)) {
-			TtsSpeak(VOICE_LIQUID_LOW, TRUE);
+			Mp3Speak(VOICE_LIQUID_LOW, FALSE);
 		}
 		g_YKCCtr.i8Tmr_Spray_Back_10ms = -1;
 	} else if(g_YKCCtr.i8Tmr_Spray_Back_10ms > 0) {
 		g_YKCCtr.i8Tmr_Spray_Back_10ms--;
 	}
 
-	UpdateTTS();	/* 更新语音模块 */
-
 	g_YKCCtr.u32DinDat_last = g_Ctr.u32DinDat;
 	g_YKCCtr.u8ClnSeqNo_last = g_YKCCtr.u8ClnSeqNo;
 
-	g_CodeTest.fVal[69] = g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure;
-	g_CodeTest.fVal[70] = GPIO_read(TOP_WATER_JET_RelayNo);
-	g_CodeTest.fVal[71] = GPIO_read(BOT_WATER_JET_RelayNo);
 }
 
 /* 依据序列进行动作
@@ -1702,31 +1702,43 @@ BOOL PubSpecialData(MQTT_COMM* pMqttComm)
 	/* 本机信息发布:打印数据成Json格式 */
 	*pTxBuf++ = '{';					/* Json开始 */
 	PrintStringToJson(&pTxBuf, "Status", aChWinClnSTStr[g_YKCCtr.WinClnST]);
-	PrintF32DatToJson(&pTxBuf, "气压差", g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure, 4);
-	PrintF32DatToJson(&pTxBuf, "Idle", g_YKCCtr.fAirPressure_PumpIdle, 2);
-	PrintF32DatToJson(&pTxBuf, "Now", g_MsrRes.fAirPressure, 2);
-	PrintF32DatToJson(&pTxBuf, "Pump", g_YKCCtr.fPumpDuty, 2);
-	PrintU32DatToJson(&pTxBuf, "din", g_Ctr.u32DinDat, 0);
-	PrintU32DatToJson(&pTxBuf, "RightCnt", g_MsrRes.uRightCount, 0);
-	PrintU32DatToJson(&pTxBuf, "LeftCnt", g_MsrRes.uLeftCount, 0);
+	PrintU32DatToJson(&pTxBuf, "ClnSeqNo", g_YKCCtr.u8ClnSeqNo, 0);
+	PrintF32DatToJson(&pTxBuf, "气压差", g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure, 6);
+	PrintF32DatToJson(&pTxBuf, "Idle", g_YKCCtr.fAirPressure_PumpIdle, 6);
+	PrintF32DatToJson(&pTxBuf, "fAirPressure", g_MsrRes.fAirPressure, 6);
+	PrintF32DatToJson(&pTxBuf, "真空泵Duty", g_YKCCtr.fPumpDuty, 2);
+	PrintU32DatToJson(&pTxBuf, "StallNo", u8StallCode, 0);
+//	PrintU32DatToJson(&pTxBuf, "RightCnt", g_MsrRes.uRightCount, 0);
+//	PrintU32DatToJson(&pTxBuf, "LeftCnt", g_MsrRes.uLeftCount, 0);
+	*pTxBuf++ = '"';
+	PrintString(&pTxBuf, pTxBuf + 50, "换向原因");
+	*pTxBuf++ = '"';
+	*pTxBuf++ = ':';
+	*pTxBuf++ = '"';
+	PrintString(&pTxBuf, pTxBuf + 50, pChTallCause);
+	*pTxBuf++ = '"';
+	*pTxBuf++ = ',';
 	PrintF32DatToJson(&pTxBuf, "RightI", g_MsrRes.fRightCur, 2);
 	PrintF32DatToJson(&pTxBuf, "LeftI", g_MsrRes.fLeftCur, 2);
 	PrintF32DatToJson(&pTxBuf, "RightMaxI", g_MsrRes.fRightMaxI, 2);
 	PrintF32DatToJson(&pTxBuf, "LeftMaxI", g_MsrRes.fLeftMaxI, 2);
-	PrintF32DatToJson(&pTxBuf, "当前角度：", g_YKCCtr.fAngle, 2);
-	PrintF32DatToJson(&pTxBuf, "目标角度：：", g_YKCCtr.fAimedAngle, 2);
+	PrintF32DatToJson(&pTxBuf, "当前角度：", g_YKCCtr.fAngle, 4);
+	PrintF32DatToJson(&pTxBuf, "目标角度：", g_YKCCtr.fAimedAngle, 4);
+	PrintF32DatToJson(&pTxBuf, "now：", g_CodeTest.fVal[3], 4);
+	PrintF32DatToJson(&pTxBuf, "des：", g_CodeTest.fVal[4], 4);
 	PrintStringNoOvChk(&pTxBuf, "\"Hit:\"");
 	for(int i = 0; i <= CLIFF_REAR_RIGHT_DInNo; i++) {
-		if(g_YKCCtr.uTimer_DInSig_10ms[i]) {
+		if(g_YKCCtr.uTimer_DInSig_Tick[i]) {
 //			printf("%s ", aChWinClnDinStr[i]);
 			PrintStringNoOvChk(&pTxBuf, aChWinClnDinStr[i]);
 			*pTxBuf++ = ',';
 		}
 	}
-//	*pTxBuf++ = ',';
+	*pTxBuf++ = ',';
 	pTxBuf--;
 	*pTxBuf++ = '}';					/* Json结尾 */
 	/* 本机信息发布:传输 */
+	pChTallCause = "";
 	return PublishMqtt(pMqttComm, pTxBuf, uMsgIDPt, u8QoS);	/* QoS修改必须在本段代码开始的位置 */
 }
 

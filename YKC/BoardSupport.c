@@ -525,6 +525,7 @@ void UpdateIMU(void)
 	}
 }
 #else
+static float32 fXAcc, fYAcc, fZAcc;
 void UpdateIMU(void)
 {
     /* 根据六轴数据计算姿势角度数据 */
@@ -538,6 +539,9 @@ void UpdateIMU(void)
 	int16 iAccX = g_Bmi270Comm.iAccX;
 	int16 iAccY = g_Bmi270Comm.iAccY;
 	int16 iAccZ = g_Bmi270Comm.iAccZ;
+	fXAcc = iAccX / 16384.0f;
+	fYAcc = iAccY / 16384.0f;
+	fZAcc = iAccZ / 16384.0f;
 	if(iGyrX && iGyrY && iGyrZ && iAccX && iAccY && iAccZ) {
 
 		 /* ========== 1. 量程缩放 ========== */
@@ -736,9 +740,9 @@ void UpdateIRCtrl(void)
 }
 /*语音模块***************************************************************************************/
 #include "queue.h"
-#define TTS_UART_NO	1
+//#define TTS_UART_NO	1
 #define MP3_UART_NO	1
-#define MP3_DEFAULT_VOLUME_VALUE			25		/* MP3模块默认音量大小 */
+#define MP3_DEFAULT_VOLUME_VALUE			30		/* MP3模块默认音量大小(0 ~ 30) */
 
 #define QUEUE_SIZE	10
 typedef struct {
@@ -796,155 +800,247 @@ BOOL CirQueDeq(CIRCULAR_QUEUE *pQue, uint32* pDeqItem) {
     return bRes;
 }
 
-typedef struct {
-	CIRCULAR_QUEUE Que_Speaking;
-	uint32 u32PlayingTick;
-}TTS;
-TTS g_TTS;
+//typedef struct {
+//	CIRCULAR_QUEUE Que_Speaking;
+//	uint32 u32PlayingTick;
+//}TTS;
+//TTS g_TTS;
 
-/* 队列初始化 [线程安全] */
-BOOL InitTtsSpeaking(void)
-{
-	OpenUartComm(TTS_UART_NO, 9600, 0, 100);
-	CirQueInit(&g_TTS.Que_Speaking);			/* 语音模块播放队列 */
-	g_TTS.u32PlayingTick = 0;
-	return TRUE;
-}
+//
+///* 队列初始化 [线程安全] */
+//BOOL InitTtsSpeaking(void)
+//{
+//	OpenUartComm(TTS_UART_NO, 9600, 0, 100);
+//	CirQueInit(&g_TTS.Que_Speaking);			/* 语音模块播放队列 */
+//	g_TTS.u32PlayingTick = 0;
+//	return TRUE;
+//}
+
 /* =-==================新增MP3模块相关================== */
+MP3 g_Mp3;
+
+/* 可能是Mp3模块的问题，接收数据时有时候接收一般就进入空闲，触发接收完成，导致接收的数据不完整。 */
+
 /* 发送指令到Mp3，参1：指令类型。参2：数据，参3：响应数据
- * 目前用到的指令发送的数据长度和响应数据长度都是2，因此用一个uint16就够了（后续如果有更长的可以用void*） */
-BOOL SendCmdToMp3(MP3_CMD eCmd, uint16 uValue, uint16 *pUResValue)
+ * 注意：参数3的长度最少应为3，目前使用的指令中，最大的响应长度就是3 */
+BOOL SendCmdToMp3(MP3_CMD eCmd, uint16 uValue, uint8 *pU8ResBuf)
 {
-	uint8 *pStart = g_UartComm[MP3_UART_NO].u8TRBuf;
-	uint8 *pBuf = pStart;
-	*pBuf++ = 0xAA;		/* 固定帧头 */
-	*pBuf++ = eCmd;		/* 指令类型 */
-	uint8 u8SM = 0xAA + eCmd;	/* SM码(校验码) */
-	uint8 uResDataLen = 0;		/* 期望响应的数据长度 */
-	pBuf++;						/* 跳过数据长度位 */
-	switch(eCmd) {
-		case MP3_CMD_QUERY_STATE:			/* 查询播放状态(0~2: 停止/播放/暂停) */
-			uResDataLen = 1;
-			break;
-		case MP3_CMD_PLAY:					/* 播放 */
-		case MP3_CMD_PAUSE:					/* 暂停 */
-		case MP3_CMD_STOP:					/* 停止 */
-		case MP3_CMD_VOLUME_UP:				/* 音量加 */
-		case MP3_CMD_VOLUME_DOWN:			/* 音量减 */
-			break;
-		case MP3_CMD_SELECT_SONG_PLAY:		/* 选择曲目播放 */
-			pBuf[0] = uValue >> 8;
-			pBuf[1] = uValue;
-			u8SM += (pBuf[0] + pBuf[1]);
-			pBuf+=2;
-			break;
-		case MP3_CMD_SET_VOLUME:			/* 设置音量(0~30) */
-			pBuf[0] = uValue;
-			u8SM += pBuf[0];
-			pBuf++;
-			break;
-		default:
-			return FALSE;
-	}
-	pStart[2] = pBuf - pStart - 3;		/* 数据长度 */
-	*pBuf++ = u8SM;
-	/* 发送帧 */
-	WriteToUart(MP3_UART_NO, pBuf - pStart);
-	if(uResDataLen) {	/* 需要响应的，等待接收响应 */
-		uint16 uRecvLen = ReadFromUart(MP3_UART_NO, 10);
-		if(uRecvLen && (pStart[0] == 0xAA) && (pStart[0] == eCmd) && (pStart[2] == uResDataLen) && pUResValue) {
-			u8SM = 0;
-			for(uint16 i = 0; i < uRecvLen - 1; i++) {	/* 计算校验和 */
-				u8SM += pStart[i];
-			}
-			if(u8SM != pStart[uRecvLen - 1]) {	/* 校验和不通过 */
+	for(uint8 u8TryCnt = 0; u8TryCnt < 3; u8TryCnt++) {		/* 多尝试几次 */
+		uint8 *pStart = g_UartComm[MP3_UART_NO].u8TRBuf;
+		uint8 *pBuf = pStart;
+		*pBuf++ = 0xAA;		/* 固定帧头 */
+		*pBuf++ = eCmd;		/* 指令类型 */
+		uint8 u8SM = 0xAA + eCmd;	/* SM码(校验码) */
+		uint8 uResDataLen = 0;		/* 期望响应的数据长度 */
+		pBuf++;						/* 跳过数据长度位 */
+		switch(eCmd) {
+			case MP3_CMD_QUERY_STATE:			/* 查询播放状态(0~2: 停止/播放/暂停) */
+			case MP3_CMD_QUERY_DRIVE:			/* 查看当前盘符 */
+				uResDataLen = 1;
+				break;
+			case MP3_CMD_QUERY_SONGS_NUMBER:	/* 获取总曲目数 */
+				uResDataLen = 2;
+				break;
+			case MP3_CMD_GET_RUNING_TIME:		/* 获取当前曲目总时间 */
+				uResDataLen = 3;
+				break;
+			case MP3_CMD_PLAY:					/* 播放 */
+			case MP3_CMD_PAUSE:					/* 暂停 */
+			case MP3_CMD_STOP:					/* 停止 */
+			case MP3_CMD_VOLUME_UP:				/* 音量加 */
+			case MP3_CMD_VOLUME_DOWN:			/* 音量减 */
+				break;
+			case MP3_CMD_SELECT_SONG_PLAY:		/* 选择曲目播放 */
+			case MP3_CMD_SELECT_SONG:			/* 选曲不播放 */
+				pBuf[0] = uValue >> 8;
+				pBuf[1] = uValue;
+				u8SM += (pBuf[0] + pBuf[1]);
+				pBuf+=2;
+				break;
+			case MP3_CMD_SET_VOLUME:			/* 设置音量(0~30) */
+				pBuf[0] = uValue;
+				u8SM += pBuf[0];
+				pBuf++;
+				break;
+			default:
 				return FALSE;
+		}
+		pStart[2] = pBuf - pStart - 3;		/* 数据长度 */
+		u8SM += pStart[2];
+		*pBuf++ = u8SM;
+		/* 发送帧 */
+		WriteToUart(MP3_UART_NO, pBuf - pStart);
+		if(uResDataLen) {	/* 需要响应的，等待接收响应 */
+			uint16 uRecvLen = ReadFromUart(MP3_UART_NO, 2000);
+			if(uRecvLen && (pStart[0] == 0xAA) && (pStart[1] == eCmd) && (pStart[2] == uResDataLen) && pU8ResBuf) {
+				u8SM = 0;
+				uint8 u8Index;
+				for(u8Index = 0; u8Index < uRecvLen - 1; u8Index++) {	/* 计算校验和 */
+					u8SM += pStart[u8Index];
+				}
+				if(u8SM != pStart[uRecvLen - 1]) {	/* 校验和不通过 */
+					continue;
+				}
+				pStart += 3;
+				for(u8Index = 0; u8Index < uResDataLen; u8Index++) {	/* 拷贝字符串 */
+					*pU8ResBuf++ = *pStart++;
+				}
+				return TRUE;
+			} else {	/* 验证不通过 */
+				continue;
 			}
-			if(uResDataLen == 1) {
-				*pUResValue = pStart[3];
-			} else {
-				*pUResValue = (pStart[3] << 8) | pStart[4];
-			}
-		} else {	/* 验证不通过 */
+		} else {	/* 不需要响应，直接退出 */
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* 播放指定音频, 参2: 1立刻播放，0如果当前没有在播放音频才播放 */
+BOOL Mp3Speak(MP3_DIALOG_TYPE eDialogNo, BOOL bPlay_1Now_0Idle)
+{
+	if(bPlay_1Now_0Idle) {
+		/* 先停止正在播放的音频再播放. */
+		if(SendCmdToMp3(MP3_CMD_STOP, 0, NULL) && SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, eDialogNo, NULL)) {
+			g_Mp3.u32Playing_ms = g_Mp3.aUSongsRunningTime_s[eDialogNo] * 1000;
+			g_Mp3.uLastPlayNo = eDialogNo;
+		} else {
 			return FALSE;
+		}
+	} else if(g_Mp3.u32Playing_ms == 0) {		/* 当前为未播放 */
+		SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, eDialogNo, NULL);
+		if(g_Mp3.uLastPlayNo == eDialogNo) {			/* 两次播放的是同一个提示, 为了防止一直不停的循环播放，这里多加5s的延时 */
+			g_Mp3.u32Playing_ms = g_Mp3.aUSongsRunningTime_s[eDialogNo] * 1000 + 5000;
+		} else {
+			g_Mp3.u32Playing_ms = g_Mp3.aUSongsRunningTime_s[eDialogNo] * 1000;
+			g_Mp3.uLastPlayNo = eDialogNo;
 		}
 	}
 	return TRUE;
-}
-
-/* 立即播放指定音频 */
-BOOL Mp3Speak(TTS_DIALOG_TYPE eDialogNo)
-{
-	/* 先停止正在播放的音频再播放. */
-	return SendCmdToMp3(MP3_CMD_STOP, 0, NULL) && SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, eDialogNo, NULL);
 }
 
 /* 初始化MP3模块 */
 BOOL InitMp3Speaking(void)
 {
+	uint8 aU8RecvBuff[3];
 	OpenUartComm(MP3_UART_NO, 9600, 0, 100);
+	Task_sleep(100);
+//	SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, 1, NULL);
+
+	/* 查看Mp3盘符是否在线 */
+	if(!(SendCmdToMp3(MP3_CMD_QUERY_DRIVE, 0, aU8RecvBuff) && (aU8RecvBuff[0] & 0x04))) {
+		return FALSE;
+	}
 
 	/* 配置MP3音量 */
-	SendCmdToMp3(MP3_CMD_SET_VOLUME, MP3_DEFAULT_VOLUME_VALUE, NULL);
+	if(!SendCmdToMp3(MP3_CMD_SET_VOLUME, MP3_DEFAULT_VOLUME_VALUE, NULL)) {
+		return FALSE;
+	}
 
+	/* 获取总曲目数 */
+	if(SendCmdToMp3(MP3_CMD_QUERY_SONGS_NUMBER, 0, aU8RecvBuff)) {
+		uint16 uSongNbr = (aU8RecvBuff[0] << 8) | aU8RecvBuff[1];
+		if(uSongNbr < VOICE_MAX_NO - 1) {	/* 歌曲数目不对，认为初始化失败 */
+			return FALSE;
+		}
+	}
+
+	/* 配置每首歌的时长 */
+	g_Mp3.aUSongsRunningTime_s[1] = 11;
+	g_Mp3.aUSongsRunningTime_s[2] = 2;
+	g_Mp3.aUSongsRunningTime_s[3] = 2;
+	g_Mp3.aUSongsRunningTime_s[4] = 2;
+	g_Mp3.aUSongsRunningTime_s[5] = 2;
+	g_Mp3.aUSongsRunningTime_s[6] = 2;
+	g_Mp3.aUSongsRunningTime_s[7] = 2;
+	g_Mp3.aUSongsRunningTime_s[8] = 2;
+	g_Mp3.aUSongsRunningTime_s[9] = 3;
+	g_Mp3.aUSongsRunningTime_s[10] = 2;
+	g_Mp3.aUSongsRunningTime_s[11] = 2;
+	g_Mp3.aUSongsRunningTime_s[12] = 2;
+
+
+//	/* 获取总曲目数(原本想动态计算每首歌的时长，但是通信一直有问题还是写死吧，毕竟歌也是死的.) */
+//	if(SendCmdToMp3(MP3_CMD_QUERY_SONGS_NUMBER, 0, aU8RecvBuff)) {
+//		uint16 uSongNbr = (aU8RecvBuff[0] << 8) | aU8RecvBuff[1];
+//		if(uSongNbr < VOICE_MAX_NO - 1) {	/* 歌曲数目不对，认为初始化失败 */
+//			return FALSE;
+//		}
+//		for(uint16 uIndex = 1; uIndex < VOICE_MAX_NO; uIndex++) {			/* 获取每首曲目的播放时长 */
+//			if(SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, uIndex, NULL)) {		/* 先选择曲目播放 */
+//				Task_sleep(40);		/* 防止播放太频繁，mp3模块反应不过来 */
+////				SendCmdToMp3(MP3_CMD_STOP, 0, NULL);		/* 停止播放，由于程序运行的特别快，声音没有出来就已经停止了. */
+//				if(SendCmdToMp3(MP3_CMD_GET_RUNING_TIME, 0, aU8RecvBuff)) {	/* 获取播放时长 */
+//					g_Mp3.aUSongsRunningTime_s[uIndex] = aU8RecvBuff[0] * 60 * 60 + aU8RecvBuff[1] * 60 + aU8RecvBuff[2] + 1;
+//				} else {
+//					return FALSE;
+//				}
+//			} else {	/* 通信失败 */
+//				return FALSE;
+//			}
+//		}
+//	} else {
+//		return FALSE;
+//	}
+//	SendCmdToMp3(MP3_CMD_STOP, 0, NULL);		/* 停止播放，由于程序运行的特别快，升级没有出来就已经停止了. */
 	return TRUE;
 }
 /* =-==================新增MP3模块相关end================== */
 
-/* 如果成功加入播放队列则返回TRUE，如果队列已满则返回FALSE [线程安全] */
-BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup)
-{
-	return CirQueEnq(&g_TTS.Que_Speaking, DlgType, bIgnoreDup);
-}
+///* 如果成功加入播放队列则返回TRUE，如果队列已满则返回FALSE [线程安全] */
+//BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup)
+//{
+//	return CirQueEnq(&g_TTS.Que_Speaking, DlgType, bIgnoreDup);
+//}
 
 #include "MdlUARTnModbus.h"
 #define TTS_HEADER_LEN	5
 /* 更新TTS [线程安全] */
-void UpdateTTS(void)
-{
-	uint32 u32CurrentReqType;
-	/* 处理队列中待播放的请求 */
-	if(!g_TTS.u32PlayingTick && CirQueDeq(&g_TTS.Que_Speaking, &u32CurrentReqType)) {
-		/* v[0~16]:0朗读音量为静音，16朗读音量最大，默认是10
-		  m[0~16]:0背景音乐为静音，16背景音乐音量最大，默认是4
-		  t[0~5]:0朗读语速最慢，5朗读语速最快，默认是4*/
-		uint8 *pBuf = g_UartComm[TTS_UART_NO].u8TRBuf;
-		const char* pHcData = cnst_TtsDialog[(TTS_DIALOG_TYPE)u32CurrentReqType];
-		uint8 u8HcLength = strlen(pHcData);
-		uint8 u8Encode = 1;					/* 文本编码格式，0：GB2312，1：GBK，2：BIG5，3：UNICODE*/
-		uint8 u8Music = 0;					/* 选择背景音乐(0：无背景音乐  1-15：背景音乐可选)*/
-
-		/* 固定帧信息 */
-		*pBuf++ = 0xFD ; 					/* 构造帧头FD*/
-		*pBuf++ = 0x00 ; 					/* 构造数据区长度的高字节*/
-		*pBuf++ = u8HcLength + 3; 			/* 构造数据区长度的低字节，加命令字、命令参数和校验的三个字节，数据区长度必须严格一致*/
-		*pBuf++ = 0x01 ; 					/* 构造命令字：合成播放命令*/
-		*pBuf++ = u8Encode | u8Music << 4 ; /* 构造命令参数：编码格式设定，背景音乐设定*/
-
-		/* 校验码计算 */
-		int8 i = 0;
-		uint8 u8Ecc = 0;
-		for(i = 0; i < TTS_HEADER_LEN; i++) {
-			u8Ecc ^= g_UartComm[TTS_UART_NO].u8TRBuf[i];
-		}
-		for(i = 0; i < u8HcLength; i++) {
-			u8Ecc ^= pHcData[i];
-		}
-
-		/* 拼接帧 */
-		PrintStringNoOvChk(&pBuf, pHcData);
-		*pBuf++ = u8Ecc;
-
-		/* 发送帧 */
-		WriteToUart(TTS_UART_NO, TTS_HEADER_LEN + u8HcLength + 1);
-
-		/* 等待延时 */
-		g_TTS.u32PlayingTick = 100 * 5;		/* 大约等5s的tick */
-	}
-	if(g_TTS.u32PlayingTick) {
-		g_TTS.u32PlayingTick--;
-	}
-}
+//void UpdateTTS(void)
+//{
+//	uint32 u32CurrentReqType;
+//	/* 处理队列中待播放的请求 */
+//	if(!g_TTS.u32PlayingTick && CirQueDeq(&g_TTS.Que_Speaking, &u32CurrentReqType)) {
+//		/* v[0~16]:0朗读音量为静音，16朗读音量最大，默认是10
+//		  m[0~16]:0背景音乐为静音，16背景音乐音量最大，默认是4
+//		  t[0~5]:0朗读语速最慢，5朗读语速最快，默认是4*/
+//		uint8 *pBuf = g_UartComm[TTS_UART_NO].u8TRBuf;
+//		const char* pHcData = cnst_TtsDialog[(TTS_DIALOG_TYPE)u32CurrentReqType];
+//		uint8 u8HcLength = strlen(pHcData);
+//		uint8 u8Encode = 1;					/* 文本编码格式，0：GB2312，1：GBK，2：BIG5，3：UNICODE*/
+//		uint8 u8Music = 0;					/* 选择背景音乐(0：无背景音乐  1-15：背景音乐可选)*/
+//
+//		/* 固定帧信息 */
+//		*pBuf++ = 0xFD ; 					/* 构造帧头FD*/
+//		*pBuf++ = 0x00 ; 					/* 构造数据区长度的高字节*/
+//		*pBuf++ = u8HcLength + 3; 			/* 构造数据区长度的低字节，加命令字、命令参数和校验的三个字节，数据区长度必须严格一致*/
+//		*pBuf++ = 0x01 ; 					/* 构造命令字：合成播放命令*/
+//		*pBuf++ = u8Encode | u8Music << 4 ; /* 构造命令参数：编码格式设定，背景音乐设定*/
+//
+//		/* 校验码计算 */
+//		int8 i = 0;
+//		uint8 u8Ecc = 0;
+//		for(i = 0; i < TTS_HEADER_LEN; i++) {
+//			u8Ecc ^= g_UartComm[TTS_UART_NO].u8TRBuf[i];
+//		}
+//		for(i = 0; i < u8HcLength; i++) {
+//			u8Ecc ^= pHcData[i];
+//		}
+//
+//		/* 拼接帧 */
+//		PrintStringNoOvChk(&pBuf, pHcData);
+//		*pBuf++ = u8Ecc;
+//
+//		/* 发送帧 */
+//		WriteToUart(TTS_UART_NO, TTS_HEADER_LEN + u8HcLength + 1);
+//
+//		/* 等待延时 */
+//		g_TTS.u32PlayingTick = 100 * 5;		/* 大约等5s的tick */
+//	}
+//	if(g_TTS.u32PlayingTick) {
+//		g_TTS.u32PlayingTick--;
+//	}
+//}
 
 /* 控制灯效， u32LedsGpioToWrite：要写入的led,支持与操作以实现混色 */
 void ControlLed(uint32 u32LedsToWrite)

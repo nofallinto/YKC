@@ -124,20 +124,23 @@ void InitSysMdl(void)
 | In/Out/G var	:
 | Author		: Wang Renfei			Date	: 2009-5-31
 \=========================================================================*/
+//uint32* GetCounterpartAddr(uint32 *pVal);
 void SysTask(void const * pArgs)
 {
 	volatile int32 i;
 
 	InitSysMdl();
-//	if(((GetVerVar(GetVolatileFromU32Addr(&g_u32SoftVer))) == 9000)
-//			&& ((GetVerVar(GetVolatileFromU32Addr(GetCounterpartAddr(&g_u32SoftVer)))) == 9000))
-//	{
+	if(((GetVerVar(GetVolatileFromU32Addr(&g_u32SoftVer))) == 9000)
+			&& ((GetVerVar(GetVolatileFromU32Addr(GetCounterpartAddr((uint32 *)&g_u32SoftVer)))) == 9000))
+	{
 		g_PubSoftAuthCtr.uPubSoftUpdateCnt = 1000;		/* TODO：临时成为母版：升级运行软件计数器 */
 		g_PubSoftAuthCtr.uPubSoftInstallCnt = 1000;		/* TODO：临时成为母版：从测试软件到运行软件计数器 */
 		g_PubSoftAuthCtr.uPubSnCnt = 1000;				/* TODO：临时成为母版：发布SN计数器 */
 		g_PubSoftAuthCtr.uPubLicCnt = 1000;				/* TODO：临时成为母版：发布License计数器 */
-//	}
-	g_Sys.SerialNo.u32Dat = 11111111;
+	}
+
+//	g_Sys.SerialNo.u32Dat = 88888888;
+
 	for(;;) {
     	ChkSoftIntegrity();
 		if(g_DataAcsIntf.bConfHaveUnsavedChange[SAVE_GRP_NUL]) {	/* 调试的时候，手动启动参数存储 */
@@ -213,7 +216,7 @@ void CtrTask(const void* argument)
 			SysCtlReset();
 		}
 		RunMdlCtr();
-		Semaphore_pend(g_SysBlock.SEM_Ctr, OS_TICK_KHz*10);			//Semaphore_pend(SEM_CtrTskRun, OS_TICK_KHz*40);
+		if(Semaphore_pend(g_SysBlock.SEM_Ctr, OS_TICK_KHz*CTR_TASK_PERIOD_TICKS));			//Semaphore_pend(SEM_CtrTskRun, OS_TICK_KHz*40);
 
 #if 0
 		if(g_CodeTest.u32Val[91]) {
@@ -308,6 +311,10 @@ void vApplicationTickHook(void)		/* 原来TI void DriveTick_1KHz(void) */
 		g_Sys.uTmr_1Hz = 1000 - 1;		/* 0 to 999 == 1000*/
 	} else {
 		g_Sys.uTmr_1Hz--;
+	}
+
+	if(g_Mp3.u32Playing_ms) {
+		g_Mp3.u32Playing_ms--;
 	}
 #if SUPPORT_FATFS
 	extern void DrvSdspiTick_1Hz(void);
@@ -529,18 +536,18 @@ void DrvSoftUpdateTick_1KHz(void)
 	if(g_Sys.uTmr_EraseFlash_DistPwr_ms) {
 		g_Sys.uTmr_EraseFlash_DistPwr_ms--;
 	}
-	if(g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTmr_RecvPingResp_ms) {
-		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTmr_RecvPingResp_ms--;
+	if(g_MqttComm[MQTT_TYPE_PUB].pingConf.uTmr_RecvPingResp_ms) {
+		g_MqttComm[MQTT_TYPE_PUB].pingConf.uTmr_RecvPingResp_ms--;
 	}
-	if(g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTmr_RecvPingResp_ms) {
-		g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTmr_RecvPingResp_ms--;
+	if(g_MqttComm[MQTT_TYPE_SUB].pingConf.uTmr_RecvPingResp_ms) {
+		g_MqttComm[MQTT_TYPE_SUB].pingConf.uTmr_RecvPingResp_ms--;
 	}
 
-	if(g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTimer_SendPing_ms < 0xFFFF) {
-		g_MqttComm[MQTT_TYPE_PUB].GprsNewAdd.uTimer_SendPing_ms++;
+	if(g_MqttComm[MQTT_TYPE_PUB].pingConf.uTimer_SendPing_ms < 0xFFFF) {
+		g_MqttComm[MQTT_TYPE_PUB].pingConf.uTimer_SendPing_ms++;
 	}
-	if(g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTimer_SendPing_ms < 0xFFFF) {
-		g_MqttComm[MQTT_TYPE_SUB].GprsNewAdd.uTimer_SendPing_ms++;
+	if(g_MqttComm[MQTT_TYPE_SUB].pingConf.uTimer_SendPing_ms < 0xFFFF) {
+		g_MqttComm[MQTT_TYPE_SUB].pingConf.uTimer_SendPing_ms++;
 	}
 }
 
@@ -1355,6 +1362,7 @@ BOOL PubDebugChn(MQTT_COMM* pMqttComm, uint8 u8DebugChnNo)
  * RS485读取速度：115200bps，即11.52KB，考虑通讯开销，估计能够传输6KB数据，即6K/(12*4) = 125条记录
  * MQTT发送速度: 一秒钟传输一次，每次最多传输约4KB*3/4=3KB，传输记录数：3K/(12*4) = 62.5条
  *==========================================================================*/
+//static float g_PackCnt = 0;
 void Rec_DebugPack(uint32 u32Flag, float32 fDat0, float32 fDat1, float32 fDat2, 
 					float32 fDat3, float32 fDat4, float32 fDat5, float32 fDat6, 
 					float32 fDat7, float32 fDat8, float32 fDat9, float32 fDat10)
@@ -1365,6 +1373,7 @@ void Rec_DebugPack(uint32 u32Flag, float32 fDat0, float32 fDat1, float32 fDat2,
 		g_DebugPack.Data[u8RecPt].fDat[0] = fDat0;
 		g_DebugPack.Data[u8RecPt].fDat[1] = fDat1;
 		g_DebugPack.Data[u8RecPt].fDat[2] = fDat2;
+//		g_DebugPack.Data[u8RecPt].fDat[2] = g_PackCnt++;
 		g_DebugPack.Data[u8RecPt].fDat[3] = fDat3;
 		g_DebugPack.Data[u8RecPt].fDat[4] = fDat4;
 		g_DebugPack.Data[u8RecPt].fDat[5] = fDat5;
@@ -1439,7 +1448,7 @@ BOOL PubDebugPack(MQTT_COMM* pMqttComm)
 
 		/* 填充Mqtt Buf */
 		uint8* pTxBuf = pMqttComm->u8TRBuf + 5; /* 固定头部预留，1Byte类型+2Byte总长度(最大长度16383)+2B Topic长度 */
-		uint8 u8QoS = 1;			/* 修改本次发布的QoS必须在这里进行，否则本段代码可能运行出错 */
+		uint8 u8QoS = 0;			/* 修改本次发布的QoS必须在这里进行，否则本段代码可能运行出错 */
 		/* 水位发布:打印Topic */
 		PrintStringNoOvChk(&pTxBuf, pMqttComm->broker.clientid);
 		PrintStringNoOvChk(&pTxBuf, "/DEBUG/PACK_DATA");

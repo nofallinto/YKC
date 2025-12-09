@@ -161,6 +161,13 @@ typedef struct {
 }ADC_DMA_BUF;
 EXT ADC_DMA_BUF g_AdcDmaBuf;
 
+typedef struct {
+	uint32 u32Playing_ms;								/* 当前歌曲剩余播放时长 单位：ms */
+	uint16 aUSongsRunningTime_s[VOICE_MAX_NO];			/* 每首歌的播放时长 单位：s */
+	uint16 uLastPlayNo;									/* 上一次播放的歌曲编号 */
+}MP3;
+EXT MP3 g_Mp3;
+
 /* 模拟信号处理 */
 #define ANALOG_ADSAMP_BUF_LEN		180
 typedef struct {
@@ -214,7 +221,7 @@ extern const I2C_BSP cnst_I2C_BSP[I2C_COMM_NUM];
 #define LED_COLOR_BLUE		(1 << 2)
 #define LED_COLOR_YELLOW	(LED_COLOR_RED | LED_COLOR_GREEN)
 #define LED_COLOR_PINK		(LED_COLOR_RED | LED_COLOR_BLUE)
-#define LED_COLOR_CRAN 		(LED_COLOR_GREEN | LED_COLOR_BLUE)
+#define LED_COLOR_CYAN 		(LED_COLOR_GREEN | LED_COLOR_BLUE)
 /*===========================================================================
  * Conf Var
  *==========================================================================*/
@@ -255,9 +262,11 @@ EXT float32 ProcPulseSig(uint8 u8PulseNo);
 EXT void UpdateIMU(void);
 EXT void UpdateAir(void);
 EXT void UpdateIRCtrl(void);
-EXT BOOL InitTtsSpeaking(void);
-EXT BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup);
-EXT void UpdateTTS(void);
+//EXT BOOL InitTtsSpeaking(void);
+//EXT BOOL TtsSpeak(TTS_DIALOG_TYPE DlgType, BOOL bIgnoreDup);
+//EXT void UpdateTTS(void);
+EXT BOOL InitMp3Speaking(void);	 					/* 初始化MP3模块 */
+EXT BOOL Mp3Speak(MP3_DIALOG_TYPE eDialogNo, BOOL bPlay_1Now_0Idle);		/* 立即播放指定音频 */
 EXT void ControlLed(uint32 u32LedsToWrite);
 
 /*===========================================================================

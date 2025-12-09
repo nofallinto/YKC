@@ -142,12 +142,13 @@ float32 Bmi270GyroTransition(int16 iGyroValue)
 | 返回参数         BOOL           TRUE初始化成功, FALSE初始化失败
 | Author		: Cui				Date	: 2024-01-27
 \=========================================================================*/
+
 BOOL Bmi270Init(void)
 {
 	BMI270_CS(1);
 	OpenSPIComm(SPI_PORT_BMI270);
 
-	uint8 u8Buf[2] = {0, 0};
+	uint8 u8Buf[4] = {0, 0, 0, 0};
     osDelay(OS_TICK_KHz * 20);                                            	/* 等待设备上电成功 */
 	if(Bmi270SelfCheck()) {                                           		/* BMI270自检 */
 		u8Buf[0] = 0x00;
@@ -163,7 +164,7 @@ BOOL Bmi270Init(void)
 			u8Buf[0] = 0x0E;
 			ReadDatFromBmi270(BMI270_PWR_CTRL | BMI270_SPI_W, u8Buf, 1);      /* 开启性能模式  使能陀螺仪、加速度、温度传感器 */
 //			u8Buf[0] = (1 << 7) | (0x03 << 4) | 0x0;			/* 0xA7 */
-			u8Buf[0] = 0xA7;
+			u8Buf[0] = 0xA7;			/* 50Hz */
 			WriteDatToBmi270(BMI270_ACC_CONF | BMI270_SPI_W, u8Buf, 1);       /* 加速度采集配置 性能模式 正常采集 50Hz 采样频率,如果要提高到200也需要A9，但是会损失精度 */
 //			u8Buf[0] = (1 << 7) | (1 << 6) | (0x00 << 4) | 0x08;		/* 0xA9 */
 			u8Buf[0] = 0xA9;
@@ -173,6 +174,45 @@ BOOL Bmi270Init(void)
 			u8Buf[0] = BMI270_GYR_SAMPLE;
 			WriteDatToBmi270(BMI270_GYR_RANGE | BMI270_SPI_W, u8Buf, 1);   	  /* 陀螺仪量程配置 配置量程为:±2000dps */
 
+
+			/* 切换到Page2 */
+			uint16 uWriteData;
+			u8Buf[0] = 2;
+			WriteDatToBmi270(0x2f | BMI270_SPI_W, u8Buf, 1);
+
+			ReadDatFromBmi270(0x30 | BMI270_SPI_R, u8Buf, 4);
+
+			uWriteData = (0 << 15) | (1 << 14) | (1 << 13) | 60;
+			u8Buf[0] = uWriteData & 0xff;		/* 运动检测x轴，持续时间1000ms */
+			u8Buf[1] = uWriteData >> 8;
+
+			uWriteData = (1 << 15) | (0x06 << 11) | 0x80;		/* 设置阈值 */
+			u8Buf[2] = uWriteData & 0xff;
+			u8Buf[3] = uWriteData >> 8;
+			WriteDatToBmi270(0x30 | BMI270_SPI_W, u8Buf, 4);
+			ReadDatFromBmi270(0x30 | BMI270_SPI_R, u8Buf, 4);
+
+			u8Buf[0] = 1;
+			WriteDatToBmi270(0x2f | BMI270_SPI_W, u8Buf, 1);
+			ReadDatFromBmi270(0x30 | BMI270_SPI_R, u8Buf, 4);
+
+//			uWriteData = (1 << 15) | (1 << 14) | (1 << 13) | 20;
+//			u8Buf[0] = uWriteData & 0xff;		/* 启动三轴检测 持续时间 60 * 50 = 3000ms */
+//			u8Buf[1] = uWriteData >> 8;
+//			uWriteData = (1 << 15) | (1 << 11) | 0x80;					/* 设置阈值 */
+//			u8Buf[2] = uWriteData & 0xff;
+//			u8Buf[3] = uWriteData >> 8;
+//			WriteDatToBmi270(0x30 | BMI270_SPI_W, u8Buf, 4);
+//
+//			ReadDatFromBmi270(0x30 | BMI270_SPI_R, u8Buf, 4);
+//			ReadDatFromBmi270(0x32 | BMI270_SPI_R, u8Buf, 3);
+
+			u8Buf[0] = (1 << 3) | (0 << 2) | (1 << 1);					/* 配置中断脚推挽输出，高电平 */
+			WriteDatToBmi270(0x53 | BMI270_SPI_W, u8Buf, 1);
+			ReadDatFromBmi270(0x53 | BMI270_SPI_R, u8Buf, 2);
+
+			u8Buf[0] = 1 << 5;
+			WriteDatToBmi270(0x56 | BMI270_SPI_W, u8Buf, 1);
 			/* BMI270_GYR_RANGE寄存器 */
 			/* 设置为:0x00 加速度计量程为:±2g          获取到的加速度计数据 除以16384      可以转化为带物理单位的数据，单位：g(m/s^2) */
 			/* 设置为:0x01 加速度计量程为:±4g          获取到的加速度计数据 除以8192       可以转化为带物理单位的数据，单位：g(m/s^2) */

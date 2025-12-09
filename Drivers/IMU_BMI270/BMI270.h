@@ -61,6 +61,7 @@ typedef struct {
 	int16 iAccX;		/* G */
 	int16 iAccY;		/* G */
 	int16 iAccZ;		/* G */
+	BOOL bIsStop;		/* ÊÇ·ñ¿¨×¡ */
 }BMI270;
 EXT BMI270 g_Bmi270Comm;
 

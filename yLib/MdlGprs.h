@@ -151,8 +151,8 @@ void DMA_ReStart(DMA_HandleTypeDef *hdma);						/* 重新启动DMA */
 /*---------------GPRS 网络通信相关函数---------------*/
 EXT SOCKET GprsSocket(int32 i32Domain, int32 i32Type, int32 i32Protocl);
 EXT int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len);
-EXT int32 GprsRecv(SOCKET socketFd, uint8 *pDstBuf, int32 iReadBLen, int32 flags);
-EXT int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag);
+EXT int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Flag);
+EXT int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, int32 i32SendBlen, int32 i32Flag);
 EXT int32 GprsClose(SOCKET socketFd);
 EXT int32 GprsSetSockopt(SOCKET socketFd, int32 u32Level, int32 u32Op, void *pbuf, int32 i32Bufsize);
 EXT BOOL GprsDnsQuery(uint8* domain, uint32 *pU32IpResolved);

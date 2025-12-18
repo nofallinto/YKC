@@ -297,7 +297,7 @@ int mqtt_connect(mqtt_broker_handle_t* broker)
 	}
 
 	// Send the packet
-	if(broker->pSocketFunc->Send(broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if(broker->pSocketFunc->Send((int)(intptr_t)broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
 		return -1;
 	}
 
@@ -311,7 +311,7 @@ int mqtt_disconnect(mqtt_broker_handle_t* broker) {
 	};
 
 	// Send the packet
-	if(broker->pSocketFunc->Send(broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if(broker->pSocketFunc->Send((int)(intptr_t)broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
 		return -1;
 	}
 
@@ -325,7 +325,7 @@ int mqtt_ping(mqtt_broker_handle_t* broker) {
 	};
 
 	// Send the packet
-	if(broker->pSocketFunc->Send(broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if(broker->pSocketFunc->Send((int)(intptr_t)broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
 		return -1;
 	}
 
@@ -421,7 +421,7 @@ int mqtt_pubrel(mqtt_broker_handle_t* broker, uint16_t message_id) {
 	};
 
 	// Send the packet
-	if(broker->pSocketFunc->Send(broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if(broker->pSocketFunc->Send((int)(intptr_t)broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
 		return -1;
 	}
 
@@ -465,7 +465,7 @@ int mqtt_subscribe(mqtt_broker_handle_t* broker, const char* topic, uint16_t* me
 	memcpy(packet+sizeof(fixed_header)+sizeof(var_header), utf_topic, sizeof(utf_topic));
 
 	// Send the packet
-	if(broker->pSocketFunc->Send(broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if(broker->pSocketFunc->Send((int)(intptr_t)broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
 		return -1;
 	}
 
@@ -509,7 +509,7 @@ int mqtt_unsubscribe(mqtt_broker_handle_t* broker, const char* topic, uint16_t* 
 	memcpy(packet+sizeof(fixed_header)+sizeof(var_header), utf_topic, sizeof(utf_topic));
 
 	// Send the packet
-	if(broker->pSocketFunc->Send(broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
+	if(broker->pSocketFunc->Send((int)(intptr_t)broker->socket_info, packet, sizeof(packet), 0) < sizeof(packet)) {
 		return -1;
 	}
 

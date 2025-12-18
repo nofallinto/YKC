@@ -95,11 +95,20 @@ typedef enum {
 	CLN_ST_TEST
 }WIN_CLN_STATE;
 
+#define FREQ_DIFF_BUF_LEN  50
+typedef struct {
+	float32 fAvr;
+	float32 fRmsE;
+	uint16 uDatOKDecCnt;
+	uint16 uRecPt;
+	float32 fDatBuf[FREQ_DIFF_BUF_LEN];
+}FREQ_DIFF_REC;
+
 typedef struct {
 	/* 机器人位置，以启动位置为原点 */
 	int32 i32X;			/* 以0.01脉冲为单位 */
 	int32 i32Y;
-	float32 fAngle;		/* 机器人朝向，12点方向为0度（0°为12点，-45°为3点，+45°为9点） */
+	float32 fAngle;		/* 机器人朝向，12点方向为0度（0°为12点，-90°为3点，+90°为9点） */
 
 	/* 当前次运动距离 */
 	int32 i32x;
@@ -116,11 +125,13 @@ typedef struct {
 
 	/* 运动目标 */
 	int32 i32Forward;					/* 前进距离: >0前进 <0后退 */
-	float32 fAimedAngle;				/* 擦窗机器人要转到的目标角度（0°为12点，-45°为3点，+45°为9点） */
+	float32 fAimedAngle;				/* 擦窗机器人要转到的目标角度（0°为12点，-90°为3点，+90°为9点） */
 
 	/* 履带驱动 */
 	float32 fDragConfR2L;				/* 左右轮的阻力差异 */
 	float32 fVr2lAimErr_last;
+	FREQ_DIFF_REC FreqDiff_Wheel;
+	FREQ_DIFF_REC FreqDiff_Angle;
 
 	/* 控制量 */
 	float32 fRightDuty;
@@ -137,18 +148,19 @@ typedef struct {
 	float32 fAirPressure_PumpIdle;		/* 真空泵停时的空气压力 */
 	float32 fVacuumAimErr_last;			/* 越接近0说明排风吸力越好 */
 	float32 fPumpDuty;					/* 真空泵PWM占空比 */
-	uint8 u8Tmr_PumpFullSpeed_10ms;		/* 判定真空泵是已有足够时间启动至符合启动要求的全速，0表示时间已足够泵到达全速 */
-	uint8 u8Tmr_VacummSuff_10ms;		/* 真空泵吸力不足计时器，用于忽略瞬时的气压不足 */
-	int8 i8Tmr_Spray_Front_10ms;		/* 喷清洗液(前)计时器, -1代表此计时器空闲未使用 */
-	int8 i8Tmr_Spray_Back_10ms;			/* 喷清洗液(后)计时器, -1代表此计时器空闲未使用 */
+	uint16 uTmr_PumpDeadStop_Tick;		/* 真空泵完全停止计时器 */
+	uint8 u8Tmr_PumpFullSpeed_Tick;		/* 判定真空泵是已有足够时间启动至符合启动要求的全速，0表示时间已足够泵到达全速 */
+	uint8 u8Tmr_VacummSuff_Tick;		/* 真空泵吸力不足计时器，用于忽略瞬时的气压不足 */
+	int8 i8Tmr_Spray_Front_Tick;		/* 喷清洗液(前)计时器, -1代表此计时器空闲未使用 */
+	int8 i8Tmr_Spray_Back_Tick;			/* 喷清洗液(后)计时器, -1代表此计时器空闲未使用 */
 
-	float32 fGyrZAlpha;					/* Z轴方向上角速度的平滑系数 ((0.0f, 1.0f), 越小越平滑) */
-	float32 fGyrZJumpThr;				/* Z轴方向上角速度跳变阈值  (越小越敏感) */
-	float32 fGyrZDecayFactor;			/* Z轴方向上角速度跳变积分衰减因子  ((0.0f, 1.0f), 越小衰减越快) */
-	float32 fGyrZMean;					/* Z轴方向上角速度均值 */
-	float32 fGyrZVar;					/* Z轴方向上角速度方差 */
-	float32 fGyrZIntegral;				/* Z轴方向上角速度积分累加 + 衰减 */
-	BOOL bGyrZIsStall;					/* Z轴方向上角速度判断堵转 */
+//	float32 fGyrZAlpha;					/* Z轴方向上角速度的平滑系数 ((0.0f, 1.0f), 越小越平滑) */
+//	float32 fGyrZJumpThr;				/* Z轴方向上角速度跳变阈值  (越小越敏感) */
+//	float32 fGyrZDecayFactor;			/* Z轴方向上角速度跳变积分衰减因子  ((0.0f, 1.0f), 越小衰减越快) */
+//	float32 fGyrZMean;					/* Z轴方向上角速度均值 */
+//	float32 fGyrZVar;					/* Z轴方向上角速度方差 */
+//	float32 fGyrZIntegral;				/* Z轴方向上角速度积分累加 + 衰减 */
+//	BOOL bGyrZIsStall;					/* Z轴方向上角速度判断堵转 */
 	uint8 u8Tmr_GyroStall_Tick;			/* 陀螺仪静止计时器(通过陀螺仪中断判断) */
 	uint8 u8Tmr_GyrZStall_Tick;			/* Z轴方向上角速度堵转计时器(通过Z轴方向上的角速度长时间没变化判断) */
 
@@ -158,6 +170,11 @@ typedef struct {
 	uint8 u8AngleErr_Tick;				/* 持续误差计时器 */
 
 	uint8 u8DebugNo;					/* 用于调试 */
+	uint8 u8Tmr_skid_tick;
+
+	/* 调试使用 */
+	uint8 u8StallCode;
+	char *pChTallCause;
 }YKC_CTR;
 
 YKC_CTR g_YKCCtr;
@@ -167,16 +184,16 @@ typedef struct {
 }WIN_CLN_RUN_DATA;
 
 const CONF_n_STAT_PROP cnst_YkcConfProp[] = {                                              /* 1 2 3 4 5 6 7 8 9 A B C D E F 1 2 3 4 5 6 7 8 9 A B C D E F */
-    {1001, {ITEM_DAT_TOPIC, 0, 0, SAVE_GRP_NUL}, 7, NULL,                      				{"系统与通讯配置", "Default"}},
+    {1001, {ITEM_DAT_TOPIC, 0, 0, SAVE_GRP_NUL}, 9, NULL,                      				{"系统与通讯配置", "Default"}},
     {1002, {ITEM_DAT_SOFTVER, 0, 0, SAVE_GRP_NUL}, SOFTWARE_VER, NULL,                		{"软件版本", "Soft Version"}},
     {1003, {ITEM_DAT_U32_ID_RO, 0, 0, SAVE_GRP_BRD}, 0, (void*)&g_Sys.SerialNo,       		{"序列号", "S/N:"}},
     {1004, {ITEM_DAT_T32_RO, 0, 0, SAVE_GRP_BRD}, 0, (void*)&g_Sys.u32License_Seconds,		{"授权期限(年月日时)", "deadline"}},
-//	{1005, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fRightHitCurrent, 	{"右电机堵转时电流", ""}},
-//	{1006, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fLeftHitCurrent, 		{"左电机堵转时电流", ""}},
 	{1005, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 1000, (void *)&g_CommConf.u32MqttPubIntv_ms, {"Mqtt消息间隔(10: 打开DebugPack)", ""}},
-	{1006, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 2800, (void *)&g_MsrRes.fAimed_Air_P, 		{"期望的压差", ""}},
+	{1006, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 2800*1000, (void *)&g_DebugConf.fAimed_Air_P, 		{"期望的压差", ""}},
 	{1007, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_DebugConf.u8GprsDebugSwitch, {"GPRS调试开关", ""}},
 	{1008, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 1, (void *)&g_DebugConf.u8CliffSwitch, 	{"悬崖开关调试开关", ""}},
+	{1009, {ITEM_DAT_U32, 0, 0, SAVE_GRP_MCONF}, 1, (void *)&g_DebugConf.u8GyroSwitch, 		{"陀螺仪中断判断堵转", ""}},
+	{1010, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_DebugConf.fFilterFactor, 	{"滤波因子", ""}},
 //	{1009, {ITEM_DAT_F32, 0, 0, SAVE_GRP_MCONF}, 0, (void *)&g_YKCCtr.fGyrZDecayFactor, {"Z轴方向上角速度跳变积分衰减因子  ((0.0f, 1.0f), 越小衰减越快)", ""}},
 };
 
@@ -228,7 +245,7 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_FRONT},	/* 4. 运动到边 */
 	{CLN_ST_DRIVE, 			0, 		-800,					SPRAY_INSTR_SPRAY_NONE},	/* 5. 后退 */
 	{CLN_ST_DRIVE, 			50, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 6. 旋转50度 */
-	{CLN_ST_JTURN, 			90, 	1,						SPRAY_INSTR_SPRAY_FRONT},	/* 7. 前进J弯:减少角度 */
+	{CLN_ST_JTURN, 			90 - WINDOW_Z_SUB_CLEANING_ANGLE, 	1,						SPRAY_INSTR_SPRAY_FRONT},	/* 7. 前进J弯:减少角度 */
 
 	/* 新增、用于探索窗户的上边沿 */
 	{CLN_ST_UP_CTURN, 		90 - WINDOW_Z_SUB_CLEANING_ANGLE, 	4000,					SPRAY_INSTR_SPRAY_NONE},	/* 8. 向上前进S弯:减小角度 */
@@ -285,10 +302,21 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_ReturnY, 	SPRAY_INSTR_SPRAY_NONE},	/* 48. Y轴返回原点 */
 	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 49. 结束清洁 */
 
-	/* 测试1 */
-	{CLN_ST_DRIVE, 			90, 	0,						SPRAY_INSTR_SPRAY_NONE},	/* 50. 旋转45度 */
-	{CLN_ST_UP_CTURN, 		120, 	2000,					SPRAY_INSTR_SPRAY_NONE},	/* 51. 前进S弯:加大角度 */
-	{CLN_ST_END, 			0, 		0,						SPRAY_INSTR_SPRAY_NONE},	/* 52. 结束清洁 */
+	/* 测试2 竖直前进到头 */
+	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 50. 运动到边 */
+	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 51. 结束清洁 */
+
+	/* 测试8 竖直后退到头 */
+	{CLN_ST_DRIVE, 			0, 		FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_NONE},	/* 52. 运动到边 */
+	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 53. 结束清洁 */
+
+	/* 测试4 横着前进到头 */
+	{CLN_ST_DRIVE, 			90, 		FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 54. 运动到边 */
+	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 55. 结束清洁 */
+
+	/* 测试6 横着后退到头 */
+	{CLN_ST_DRIVE, 			90, 		FORWORD_INSTR_nINF,		SPRAY_INSTR_SPRAY_NONE},	/* 56. 运动到边 */
+	{CLN_ST_END, 			0, 		0, 						SPRAY_INSTR_SPRAY_NONE},	/* 57. 结束清洁 */
 
 	/* 测试2 */
 	{CLN_ST_EXP_FORWARD_R, 	90, 	FORWORD_INSTR_INF,		SPRAY_INSTR_SPRAY_NONE},	/* 44. 沿着上沿前进 */
@@ -313,9 +341,10 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 #define CLN_SEQ_WIN_BTM_R2L_No	32			/* 底部清洁，自右向左 */
 #define CLN_SEQ_WIN_BTM_L2R_No	41			/* 底部清洁，自左向右 */
 
-#define CLN_SEQ_TEST_No			38
-#define CLN_SEQ_TEST2_No		39
-#define CLN_SEQ_TEST3_No		40
+#define CLN_SEQ_V_F_END_No		50			/* 竖直前进到头 */
+#define CLN_SEQ_V_B_END_No		52			/* 竖直后退到头 */
+#define CLN_SEQ_H_F_END_No		54			/* 横着前进到头 */
+#define CLN_SEQ_H_B_END_No		56			/* 横着后退到头 */
 
 /* 调试用 */
 #define CLN_SEQ_TEST1_START_No	41
@@ -334,25 +363,27 @@ const CLN_ST_SEQ cnst_ClnSTSeq[] = {
 
 /* 1000个履带轮脉冲，行走约37mm; 27脉冲/mm; 履带间距约230mm, 擦窗机为265mm*265mm正方形 */
 #define MCH_LENGTH_mm				265.0f		/* 机身长度 */
-#define TRACK_DISTANCE_mm			230.0f		/* 履带间距 */
-#define PULSE_FORWARD_mm			0.037f		/* 每脉冲前进距离 */
+#define TRACK_DISTANCE_mm			226.0f		/* 履带间距 */
+#define PULSE_FORWARD_mm			0.072f		/* 每脉冲前进距离 */
 #define TRACK_DISTANCE_pulse		(TRACK_DISTANCE_mm/PULSE_FORWARD_mm) /* 履带间距，以履带行进脉冲为单位，约6216个脉冲 */
 #define PI							3.1415926f
 #define VACUUM_AIM_ERR_TOLERANCE	0.15f
 #define PUMP_TICK_TO_FULL_SPEED		200			/* 真空泵开到全速所需时长（单位10ms） */
+#define PUMP_TICK_DEAD_STOP			500			/* 真空泵从全速到完全停止所需时长（单位10ms） */
 #define PUMP_TICK_VACUMM_SUFF		100			/* 气压不足判定时长（单位10ms）  */
 #define PUMP_IDLE_DUTY				0.0f		/* IDEL时维持很低的吸力，防止掉落 */
-#define SPRAY_TIMEOUT_10ms			100			/* 喷水超时 */
+#define SPRAY_KEEP_TICK				50			/* 喷水持续时长 */
 #if LOW_AIR_P
 			#define AIMED_AIR_P	2100
 #else
-			#define AIMED_AIR_P	(g_MsrRes.fAimed_Air_P)
+			#define AIMED_AIR_P	(g_DebugConf.fAimed_Air_P)
 #endif
 
 /***************************************************************************
 						internal functions declaration
 ***************************************************************************/
 void NextWinClnSTBySeq(uint8 u8NewSeqNo_0Auto);
+float32 CalAngleDiff_degree(float32 fA, float32 fB);
 
 /***************************************************************************
  							functions definition
@@ -370,11 +401,6 @@ void InitMdlCtr(void)		/* rename from InitYKC() */
 	InitDataWithZero((uint8*)(&g_YKCCtr), sizeof(g_YKCCtr));
 	InitDataWithZero((uint8*)(&g_Ctr), sizeof(g_Ctr));
 
-	/* 初始化配置 */
-	g_YKCCtr.fGyrZAlpha = 0.05f;
-	g_YKCCtr.fGyrZJumpThr = 10.0f;
-	g_YKCCtr.fGyrZDecayFactor = 0.9f;
-
 	/* 初始化队列 */
 	InitF32Queue(&g_MsrRes.qLeftMotorCurrHistory, 15);
 	InitF32Queue(&g_MsrRes.qRightMotorCurrHistory, 15);
@@ -383,30 +409,33 @@ void InitMdlCtr(void)		/* rename from InitYKC() */
 
 	/* 初始化输出接口变量 */
 	g_YKCCtr.fDragConfR2L = 0.88;
-	g_YKCCtr.u8Tmr_PumpFullSpeed_10ms = PUMP_TICK_TO_FULL_SPEED;
-	g_YKCCtr.u8Tmr_VacummSuff_10ms = PUMP_TICK_VACUMM_SUFF;
-	g_YKCCtr.i8Tmr_Spray_Front_10ms = -1;
-	g_YKCCtr.i8Tmr_Spray_Back_10ms = -1;
-
+	g_YKCCtr.u8Tmr_PumpFullSpeed_Tick = PUMP_TICK_TO_FULL_SPEED;
+	g_YKCCtr.u8Tmr_VacummSuff_Tick = PUMP_TICK_VACUMM_SUFF;
+	g_YKCCtr.i8Tmr_Spray_Front_Tick = -1;
+	g_YKCCtr.i8Tmr_Spray_Back_Tick = -1;
+	g_YKCCtr.uTmr_PumpDeadStop_Tick = 0;
 	g_YKCCtr.fPumpDuty = 0;
 	g_YKCCtr.i32TripCntForSpray = 0;
+
+	/* 调试变量初始化 */
+	g_YKCCtr.pChTallCause = "";
 	/* 初始化下层模块 */
 
 	/* 启动硬件 */
 	InitSample();		/* 由于采样需要填充buf，然后才好计算，因此现行启动 */
 
+	GPIO_write(OTHER_DEV_DOutNo, 1);		/* 使能周边设备3.3v供电 */
+
 	/* 初始化语音模块 */
-//	InitTtsSpeaking();
-	if(!InitMp3Speaking()) {
-		configASSERT(FALSE);
+	if(!InitMp3Speaking()) {	/* Mp3模块不影响正常使用 */
+//		configASSERT(FALSE);
 	}
 	
-	GPIO_write(OTHER_DEV_DOutNo, 1);		/* 使能周边设备3.3v供电 */
 	/* 初始化六轴传感器 */
     if(!Bmi270Init()) {
 		/* IMU初始化失败*/
     	Mp3Speak(VOICE_IMU_ABN, TRUE);
-//		configASSERT(FALSE);
+		configASSERT(FALSE);
 	}
 	/* 初始化气压计 */
     if(!Bmp280Init()) {
@@ -416,8 +445,8 @@ void InitMdlCtr(void)		/* rename from InitYKC() */
 	}
 	/* 初始化红外遥控器  TIM5频率1MHz, ARR==65535 */
 	extern TIM_HandleTypeDef htim5;
-	HAL_TIM_Base_Start_IT(&htim5);	 			/* 启动定时器中断，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
-	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_2);  /* 启动定时器输入捕获，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
+	HAL_TIM_Base_Start_IT(&htim5);	 				/* 启动定时器中断，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
+	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_2);  	/* 启动定时器输入捕获，之所以没放在main.c里，是因为想在初始化代码之后再开始 */
 }
 
 /*==========================================================================
@@ -574,6 +603,7 @@ void WinClnDebug(void)
 #define MOTOR_SLOPE_THRESHOLD		3.0f			/* 履带电机堵转K阈值 */
 
 /* 更新擦窗机Z轴角速度数据 */
+#if 0
 void UpdateWinClnGyrZ(void)
 {
 	if(((abs(g_YKCCtr.i8Timer_RightAct) > 10)
@@ -596,14 +626,6 @@ void UpdateWinClnGyrZ(void)
 		g_YKCCtr.fGyrZIntegral = g_YKCCtr.fGyrZIntegral * g_YKCCtr.fGyrZDecayFactor + fJumpZ;
 		g_YKCCtr.bGyrZIsStall = g_YKCCtr.fGyrZIntegral > g_YKCCtr.fGyrZJumpThr;
 
-		/* 查看是否发生了堵转 */
-		if(fGyrZ < 4.0f) {
-			if(g_YKCCtr.u8Tmr_GyrZStall_Tick < 0xFF) {
-				g_YKCCtr.u8Tmr_GyrZStall_Tick++;
-			}
-		} else {
-			g_YKCCtr.u8Tmr_GyrZStall_Tick = 0;
-		}
 #if DEBUG_PRINT_CLN_STATE
 		printf("fGyrZ = %f, fJumpZ = %.5f, g_YKCCtr.fGyrZIntegral = %.5f DutyAim_R2L = %.5f\n", fGyrZ, fJumpZ, g_YKCCtr.fGyrZIntegral, fAim_R2L);
 		printf("ac = %.5f, ex = %.5f\n\n", g_YKCCtr.fAngle, g_YKCCtr.fAimedAngle);
@@ -616,94 +638,78 @@ void UpdateWinClnGyrZ(void)
 		g_YKCCtr.u8Tmr_GyrZStall_Tick = 0;
 	}
 }
+#endif
+/* 计算两个角度差, A - B */
+float32 CalAngleDiff_degree(float32 fA, float32 fB)
+{
+	float32 fAngleDiff = fA - fB;
+	if(fAngleDiff >= 360) {
+		fAngleDiff -= 360;
+	} else if(fAngleDiff <= -360) {
+		fAngleDiff += 360;
+	}
+	if(fAngleDiff > 180) {
+		fAngleDiff -= 360;
+	} else if(fAngleDiff < -180) {
+		fAngleDiff += 360;
+	}
+	return fAngleDiff;
+}
 
-char *pChTallCause = "";
-uint8 u8StallCode = 0;
 /* 获取擦窗机堵转状态 */
 void GetMotorStallStatus(void)
 {
-	u8StallCode = 0;
+	g_YKCCtr.u8StallCode = 0;
+	/* 查看是否发生了堵转 */
 	g_YKCCtr.bLeftStall = FALSE;
 	g_YKCCtr.bRightStall = FALSE;
-	if(g_Bmi270Comm.bIsStop && ((fabsf(g_YKCCtr.fRightDuty) > 0.5f) || (fabsf(g_YKCCtr.fRightDuty) > 0.5f))) {
+	if((fabsf(g_YKCCtr.fRightDuty) > 0.5f) || (fabsf(g_YKCCtr.fRightDuty) > 0.5f)) {	/* 运动中才进行堵转判断 */
 		/* 陀螺仪中断判断堵转 */
-		if(g_YKCCtr.u8Tmr_GyroStall_Tick > 5) {	/* 陀螺仪静止5个周期后才认为发生了堵转 */
-			g_YKCCtr.bLeftStall = TRUE;
-			g_YKCCtr.bRightStall = TRUE;
-			g_YKCCtr.u8Tmr_GyroStall_Tick = 5;
-//			printf("【中断】\n");
-			u8StallCode |= 0x01;
-			pChTallCause = "[中断]";
+		if(g_DebugConf.u8GyroSwitch && g_Bmi270Comm.bIsStop) {
+			if(g_YKCCtr.u8Tmr_GyroStall_Tick < 0xFF) {
+				g_YKCCtr.u8Tmr_GyroStall_Tick++;
+			}
+			if(g_YKCCtr.u8Tmr_GyroStall_Tick > 5) {		/* 陀螺仪静止5个周期后才认为发生了堵转 */
+				g_YKCCtr.bLeftStall = TRUE;
+				g_YKCCtr.bRightStall = TRUE;
+				g_YKCCtr.u8StallCode |= 0x01;
+				g_YKCCtr.pChTallCause = "[中断]";
+			}
 		} else {
-			g_YKCCtr.u8Tmr_GyroStall_Tick++;
+			g_YKCCtr.u8Tmr_GyroStall_Tick = 0;
 		}
-	} else {
-		g_YKCCtr.u8Tmr_GyroStall_Tick = 0;
-	}
-	if(g_YKCCtr.u8Tmr_GyrZStall_Tick > 10) {	/* 陀螺仪Z轴方向上角速度不变判断堵转 */
-		g_YKCCtr.bLeftStall = TRUE;
-		g_YKCCtr.bRightStall = TRUE;
-//		printf("【角速度不变】\n");
-		pChTallCause = "[角速度不变]";
-		u8StallCode |= 0x02;
-	} else if(g_YKCCtr.bGyrZIsStall) {				/* 陀螺仪Z轴方向的角速度变化过快 堵转(不稳定，尤其是转弯时角速度一定会变化特别大，暂时不使用) */
-//		g_YKCCtr.bLeftStall = TRUE;
-//		g_YKCCtr.bRightStall = TRUE;
-//		printf("【角速度瞬变】\n");
-//		pChTallCause = "[角速度瞬变]";
-	}
-	if(g_MsrRes.fRightCur > 1.5f) {		/* 电流判断堵转 */
-		g_YKCCtr.bRightStall = TRUE;
-//		printf("【电流】\n");
-		pChTallCause = "[右电流]";
-		u8StallCode |= 0x04;
-	}
-	if(g_MsrRes.fLeftCur > 1.5f) {
-		g_YKCCtr.bLeftStall = TRUE;
-//		printf("【电流】\n");
-		pChTallCause = "[左电流]";
-		u8StallCode |= 0x08;
-	}
-}
 
-/* 偏航自检 */
-BOOL Yaw_SelfCheck(void)
-{
-	float32 fAngleErr = fabs(g_YKCCtr.fAimedAngle - g_YKCCtr.fAngle);
-	if(g_YKCCtr.u8ClnSeqNo == g_YKCCtr.u8ClnSeqNo_last && (fAngleErr > 5.0f)) {	/* 脚本没变换、检测偏航 */
-		if(g_YKCCtr.fFirstYawAngle == 0.0f) {
-			g_YKCCtr.fFirstYawAngle = g_YKCCtr.fAngle;
-		}
-		if(fAngleErr > g_YKCCtr.fAngleErr_last) {			/* 误差角度持续增大 */
-			g_YKCCtr.u8AngleErr_Tick++;
-		} else if(g_YKCCtr.fAimedAngle < g_YKCCtr.fFirstYawAngle) {	/* 往左偏 */
-			if(g_YKCCtr.fAngle < g_YKCCtr.fFirstYawAngle) {			/* 没在偏航中 */
-				g_YKCCtr.u8AngleErr_Tick = 0;
-				g_YKCCtr.fFirstYawAngle = g_YKCCtr.fAngle;
+		/* Z轴方向上的陀螺仪判断堵转 */
+		if(g_MsrRes.fGyrZ < 4.0f) {
+			if(g_YKCCtr.u8Tmr_GyrZStall_Tick < 0xFF) {
+				g_YKCCtr.u8Tmr_GyrZStall_Tick++;
 			}
-		} else {		/* 往右偏 */
-			if(g_YKCCtr.fAngle > g_YKCCtr.fFirstYawAngle) { 		/* 没在偏航中 */
-				g_YKCCtr.u8AngleErr_Tick = 0;
-				g_YKCCtr.fFirstYawAngle = g_YKCCtr.fAngle;
+			if(g_YKCCtr.u8Tmr_GyrZStall_Tick > 10) {
+				g_YKCCtr.bLeftStall = TRUE;
+				g_YKCCtr.bRightStall = TRUE;
+				g_YKCCtr.pChTallCause = "[角速度不变]";
+				g_YKCCtr.u8StallCode |= 0x02;
 			}
+		} else {
+			g_YKCCtr.u8Tmr_GyrZStall_Tick = 0;
 		}
-		g_YKCCtr.fAngleErr_last = fAngleErr;
-	} else {		/* 脚本变换了、重新计数 */
-		g_YKCCtr.u8AngleErr_Tick = 0;
-		g_YKCCtr.fAngleErr_last = 0;
-		g_YKCCtr.fFirstYawAngle = 0;
-	}
 
-	if(g_YKCCtr.u8AngleErr_Tick > 200) {	/* 持续200个任务周期(10ms)往远离目标角度的方向偏，认为是偏航了 */
-		Mp3Speak(VOICE_CPU_TEMPERATURE_ERROR, 1);
-		g_YKCCtr.u8AngleErr_Tick = 0;
+		/* 电流判断堵转 */
+		if((fabsf(g_YKCCtr.i8Timer_RightAct) > 10) && (g_MsrRes.fRightCur > 1.5f)) {
+			g_YKCCtr.bRightStall = TRUE;
+			g_YKCCtr.pChTallCause = "[右电流]";
+			g_YKCCtr.u8StallCode |= 0x04;
+		}
+		if((fabsf(g_YKCCtr.i8Timer_LeftAct) > 10) && (g_MsrRes.fLeftCur > 1.5f)) {
+			g_YKCCtr.bLeftStall = TRUE;
+			g_YKCCtr.pChTallCause = "[左电流]";
+			g_YKCCtr.u8StallCode |= 0x08;
+		}
 	}
 }
 
 void RunMdlCtr(void)		/* rename from RunYKC */
 {
-//	g_YKCCtr.bDisableCliff = FALSE;
-
 	int8 i;
 	/* 计算值 */
 	ProcDInFilter();		/* 开入滤波 */
@@ -720,8 +726,10 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	g_MsrRes.fCPUTemperature = CalCPUTemperature(CPU_TEMP_DCSigNo);
 	g_MsrRes.fVrefint = CalVrefint(VREF_INT_DCSigNo);
 	g_MsrRes.fPumpFreq = ProcPulseSig(BUMP_MOTOR_PulseNo);
-	g_MsrRes.fRightFreq = ProcPulseSig(RIGHT_MOTOR_PulseNo);
-	g_MsrRes.fLeftFreq = ProcPulseSig(LEFT_MOTOR_PulseNo);
+	float32 fFreq = ProcPulseSig(RIGHT_MOTOR_PulseNo);
+	g_MsrRes.fRightFreq = g_YKCCtr.fRightDuty > 0 ? fFreq : 0 - fFreq;
+	fFreq = ProcPulseSig(LEFT_MOTOR_PulseNo);
+	g_MsrRes.fLeftFreq = g_YKCCtr.fLeftDuty > 0 ? fFreq : 0 - fFreq;
 
 	/* 外设 */
 	UpdateAir();		/* 更新气压计 */
@@ -767,7 +775,6 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		g_MsrRes.fLeftMaxI = g_MsrRes.fLeftCur;
 	}
 
-	UpdateWinClnGyrZ();
 	GetMotorStallStatus();		/* 获取电机的堵转状态. */
 	
 	/* 开入定时：悬崖开关，释放认为是信号 */
@@ -810,6 +817,33 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	/* 解算当前角度 */
 	float32 fAngle = g_MsrRes.fPitch;
 	float32 fAngleAvr = ((g_YKCCtr.fAngle + fAngle)/2)*(PI/180);		/* 两次平均角度（弧度） */
+	/* 解算左右轮子转速差
+		A. 利用角度变化计算获得的值: (Fr - Fl)*d_t*P/H = d_A
+		变量定义: Fl,Fr:左右轮频率, P:每脉冲行进的距离, d_t:时间片(时间微分), H:履带间距, d_A:机器人与基线(远离/靠近)的夹角变化(微分)
+		B. 根据 根据测量值计算获得的值：Fr
+	 */
+
+	/* 解算左右轮子转速差
+		A. 利用角度变化计算获得的值: (Fr - Fl)*d_t*P/H = 0 - d_A
+		变量定义: Fl,Fr:左右轮频率, P:每脉冲行进的距离, d_t:时间片(时间微分), H:履带间距, d_A:机器人与基线(远离/靠近)的夹角变化(PitchDelta)
+		B. 根据 根据测量值计算获得的值：Fr
+	 */
+	float32 fFreqErr_Right2Left_ByAngle = g_MsrRes.fPitchDelta_rad * (1000/PERIOD_CTR_TASK_ms) * TRACK_DISTANCE_pulse;
+	float32 fFreqErr_Right2Left_ByFreq = g_MsrRes.fRightFreq - g_MsrRes.fLeftFreq;	/* 前进频率为正，后退频率为负，以实现和陀螺仪计算同向 */
+
+#if 0 //1   /* 之前的算法，在转速与实际行走不一致的情况下会出问题 */
+	float32 fFreqErr_Right2Left = fFreqErr_Right2Left_ByFreq;	/* */
+#elif 0	//2 /* 仅依靠角度差推断频率差，目前看普适性最好 */
+	float32 fFreqErr_Right2Left = fFreqErr_Right2Left_ByAngle;
+#elif 3	/* 融合转速计、角度变化所得到的转速差。希望是好的算法，但真的转速计出问题，感觉没啥用 */
+	UniRecfDatToBuf((fDAT_UNI_REC*)&g_YKCCtr.FreqDiff_Wheel, FREQ_DIFF_BUF_LEN, fFreqErr_Right2Left_ByFreq);
+	UniRecfDatToBuf((fDAT_UNI_REC*)&g_YKCCtr.FreqDiff_Angle, FREQ_DIFF_BUF_LEN, fFreqErr_Right2Left_ByAngle);
+	ProcUniRecfDatAsWave((fDAT_UNI_REC*)&g_YKCCtr.FreqDiff_Wheel, FREQ_DIFF_BUF_LEN);
+	ProcUniRecfDatAsWave((fDAT_UNI_REC*)&g_YKCCtr.FreqDiff_Angle, FREQ_DIFF_BUF_LEN);
+	float32 fFreqErr_Right2Left_merge = (fFreqErr_Right2Left_ByAngle*g_YKCCtr.FreqDiff_Wheel.fRmsE + fFreqErr_Right2Left_ByFreq*g_YKCCtr.FreqDiff_Angle.fRmsE)
+										/(g_YKCCtr.FreqDiff_Wheel.fRmsE + g_YKCCtr.FreqDiff_Angle.fRmsE);
+	float32 fFreqErr_Right2Left = fFreqErr_Right2Left_merge;
+#endif
 
 	/* 刷新当前位置 */
 	float32 fTrip = (iRightCount + iLeftCount)*0.5f;
@@ -851,14 +885,6 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 
 	/* 启动、停止 */
 	if(g_YKCCtr.uTimer_DInSig_Tick[START_STOP_CMD_DInNo] == 1) {	/* 按钮被按下 */
-//		/* 新增 */
-//		Mp3Speak(u8SpeakNo, FALSE);
-//		u8SpeakNo++;
-//		if(u8SpeakNo > VOICE_BYEBYE) {
-//			u8SpeakNo = 0;
-//		}
-//		return ;
-//		/* 新增结束 */
 		if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
 			g_YKCCtr.u8DebugNo++;
 			g_YKCCtr.WinClnST = CLN_ST_HANG;
@@ -874,7 +900,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		if(g_YKCCtr.WinClnST != CLN_ST_IDLE) {
 			Mp3Speak(VOICE_BYEBYE, TRUE);
 			g_YKCCtr.WinClnST = CLN_ST_IDLE;
-			g_YKCCtr.u8Tmr_PumpFullSpeed_10ms = PUMP_TICK_TO_FULL_SPEED;
+			g_YKCCtr.u8Tmr_PumpFullSpeed_Tick = PUMP_TICK_TO_FULL_SPEED;
 		}
 	}
 
@@ -906,7 +932,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 
 		case CLN_ST_HANG:			/* 悬空:真空泵上电，但是还没有贴到窗台上 */
 			ControlLed(LED_COLOR_RED);
-			if((g_YKCCtr.uTimer_DInSig_Tick[START_STOP_CMD_DInNo] == 0) && (g_YKCCtr.u8Tmr_PumpFullSpeed_10ms == 0)) { 		/* 放开开关按钮 */
+			if((g_YKCCtr.uTimer_DInSig_Tick[START_STOP_CMD_DInNo] == 0) && (g_YKCCtr.u8Tmr_PumpFullSpeed_Tick == 0)) { 		/* 放开开关按钮 */
 				if(WinClnSectionHang()) {		/* 至少有一个脚悬空就继续等待 */
 					Mp3Speak(VOICE_CLIFF_DETECTED, FALSE);
 				} else {
@@ -1051,7 +1077,9 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			} else if((g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_LEFT_DInNo]	/* 触碰到边沿 */
 						&& g_YKCCtr.uTimer_DInSig_Tick[CLIFF_REAR_RIGHT_DInNo])
 					|| ((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] || g_YKCCtr.bLeftStall)
-						&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall)))
+						&& (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] || g_YKCCtr.bRightStall))
+					|| ((g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_LEFT_DInNo] > 50)		/* 两边，有任意一边长时间卡住 */
+						|| (g_YKCCtr.uTimer_DInSig_Tick[HIT_REAR_RIGHT_DInNo] > 50)))
 			{
 				NextWinClnSTBySeq(0);
 			} else if(g_YKCCtr.WinClnST == CLN_ST_EXP_BACK_L) {/* 靠左退行，左边需要被不断触发 */
@@ -1082,27 +1110,6 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			break;
 	}
 
-//	/* 临时性保护代码，避免到了边沿还继续 */
-//	if(((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_LEFT_DInNo)) == 0)	/* 四面全悬空，应该是反过来了 */
-//		&& ((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_RIGHT_DInNo)) == 0)
-//		&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_LEFT_DInNo)) == 0)
-//		&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_RIGHT_DInNo)) == 0))
-//	{
-//	} else if(((g_YKCCtr.i32Forward > 0)	/* 前进 */
-//		&& ((((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_LEFT_DInNo)) == 0)	/* 触碰到边沿 */
-//				&& ((g_Ctr.u32DinDat & (1<<CLIFF_FRONT_RIGHT_DInNo)) == 0))
-//			|| ((g_Ctr.u32DinDat & (1<<HIT_FRONT_LEFT_DInNo))
-//				&& (g_Ctr.u32DinDat & (1<<HIT_FRONT_RIGHT_DInNo)))))
-//	|| ((g_YKCCtr.i32Forward < 0)	/* 后退 */
-//		&& ((((g_Ctr.u32DinDat & (1<<CLIFF_REAR_LEFT_DInNo)) == 0)	/* 触碰到边沿 */
-//				&& ((g_Ctr.u32DinDat & (1<<CLIFF_REAR_RIGHT_DInNo)) == 0))
-//			|| ((g_Ctr.u32DinDat & (1<<HIT_REAR_LEFT_DInNo))
-//				&& (g_Ctr.u32DinDat & (1<<HIT_REAR_RIGHT_DInNo))))))
-//	{
-////		g_YKCCtr.i32Forward = 0;
-//		//g_YKCCtr.WinClnST = CLN_ST_STOP;
-//	}
-
 	/* 运动执行:依据运动目标，解算当前步骤所需要的履带动作 */
 	float32 fRightTrip = 0;
 	float32 fLeftTrip = 0;
@@ -1112,6 +1119,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 		g_YKCCtr.fLeftDuty = 0;
 	} else {
 		float32 fForward;
+		/* 计算左右两轮分别应该进行的距离 */
 		if(g_YKCCtr.WinClnST == CLN_ST_JTURN) {
 			/* d/D = 2*tan(A)*H/(L - tan(A)*(L-H))
 			   d: 两条履带差速
@@ -1193,6 +1201,9 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 
 		/* 计算速度:速度比值 */
 		float32 fRightDuty, fLeftDuty;
+		float32 fWheelPID_I = 0;
+		float32 fWheelPID_P = 0;
+		float32 fVr2lAimErr = 0;
 		/* 某一个履带和总体方向不一致，大概率是行程最后一点点，测量角度发生了抖动，为了避免机器人发生抖动，避免与前进方向不一致的履带方向 */
 		if((fabsf(fRightTrip) < fabsf(fLeftTrip)*0.01)
 			|| ((fRightTrip > 0) && (fForward < 0))
@@ -1213,9 +1224,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			fRightDuty = 1;
 			fLeftDuty = 0;
 		} else {	/* 计算比值 */
-			float32 fAim_R2L = fabsf(fRightTrip/fLeftTrip);
-			float32 fPID_P = 0;
-			float32 fPID_I = 0;
+			float32 fAim_R2L = fRightTrip/fLeftTrip;
 			if((g_YKCCtr.u8ClnSeqNo != g_YKCCtr.u8ClnSeqNo_last)
 				|| (g_MsrRes.fLeftFreq == 0) || (g_MsrRes.fRightFreq == 0)
 				|| (g_YKCCtr.fLeftDuty == 0) || (g_YKCCtr.fRightDuty == 0))
@@ -1223,58 +1232,28 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 				fAim_R2L *= g_YKCCtr.fDragConfR2L;
 				g_YKCCtr.fVr2lAimErr_last = 0;
 			} else {
-				float32 fVr2lAimErr = fAim_R2L - g_MsrRes.fRightFreq/g_MsrRes.fLeftFreq;
-				fPID_I = fVr2lAimErr*0.1;
-				fPID_P = (fVr2lAimErr - g_YKCCtr.fVr2lAimErr_last) * VACUUM_AIM_ERR_TOLERANCE;
-				fAim_R2L = fabsf(g_YKCCtr.fRightDuty/g_YKCCtr.fLeftDuty) + fPID_P + fPID_I;
+				fVr2lAimErr = fAim_R2L - (fFreqErr_Right2Left/g_MsrRes.fLeftFreq + 1);
+				fWheelPID_I = fVr2lAimErr*0.1;
+				fWheelPID_P = (fVr2lAimErr - g_YKCCtr.fVr2lAimErr_last) * 0.1;
+				fAim_R2L = g_YKCCtr.fRightDuty/g_YKCCtr.fLeftDuty + fWheelPID_P + fWheelPID_I;
 				g_YKCCtr.fVr2lAimErr_last = fVr2lAimErr;
-
-//				/* 新增pid算法 */
-//				float32 fVr2lAimErr = fAim_R2L - g_MsrRes.fRightFreq/g_MsrRes.fLeftFreq;
-//				fVr2lAimErr = 0.95f * g_YKCCtr.fVr2lAimErr_last + 0.05f * fVr2lAimErr;
-//				if(fVr2lAimErr < 0.15f) {
-//					fPID_P = 0;
-//				} else {
-//					fPID_P = g_YKCCtr.fVr2lAimErr_last * 0.01f;
-//				}
-//				g_YKCCtr.fVr2lAimErr_last = fVr2lAimErr;
-//				fAim_R2L += fPID_P + fPID_I;
 			}
+
+			fAim_R2L = fabsf(fAim_R2L);
 			if(fAim_R2L > 10) {	/* 限幅 */
 				fAim_R2L = 10;
-			} else if(fAim_R2L < 0) {
-				fAim_R2L = 0;
 			}
 			if(fAim_R2L > 1) {
-//				fRightDuty = 1;
-//				fLeftDuty = 1/fAim_R2L;
 				fRightDuty = MAX_DUTY_RATIO;
 				fLeftDuty = MAX_DUTY_RATIO / fAim_R2L;
 			} else {
-//				fRightDuty = fAim_R2L;
-//				fLeftDuty = 1;
 				fLeftDuty = MAX_DUTY_RATIO;
 				fRightDuty = fAim_R2L * MAX_DUTY_RATIO;
 			}
 		}
-		/* 计算速度:调整符号 */
-		if(fRightTrip < 0) {
-			fRightDuty = 0 - fRightDuty;
-		}
-		if(fLeftTrip < 0) {
-			fLeftDuty = 0 - fLeftDuty;
-		}
-
-		/* ========== 新增占空比限幅处理 ========== */
-		// 保持转向比例关系的同时限制最大幅值
-//		float32 maxDuty = fmaxf(fabsf(fRightDuty), fabsf(fLeftDuty));
-//		if(maxDuty > MAX_DUTY_RATIO) {
-//		    float32 scale = MAX_DUTY_RATIO / maxDuty;
-//		    fRightDuty *= scale;
-//		    fLeftDuty *= scale;
-//		}
-		/* ========== 限幅结束 ========== */
-
+		/* 调整符号 */
+		fLeftDuty = fLeftTrip > 0 ? fLeftDuty : 0 - fLeftDuty;
+		fRightDuty = fRightTrip > 0 ? fRightDuty : 0 - fRightDuty;
 		g_YKCCtr.fRightDuty = fRightDuty;
 		g_YKCCtr.fLeftDuty = fLeftDuty;
 	}
@@ -1282,53 +1261,49 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	/* 响应遥控器干预 */
 	UpdateIRCtrl();
 	if(g_IRCtrl.u8TryCnt) {
-		switch(g_IRCtrl.u8BtnPressing) {
+		switch(g_IRCtrl.u8BtnPressing) {	/* 以下0~9键仅为测试使用. */
 		case IR_BTN_0:
-//			Board_DrvPump(0.1f);
-			NextWinClnSTBySeq(CLN_SEQ_START_No);
+			NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_R2L_No);		/* 直接进入底部清洁 */
 			break;
 		case IR_BTN_1:
-			NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_R2L_No);
-//			Board_DrvPump(0.3f);
-			break;
-		case IR_BTN_2:
-//			Board_DrvPump(0.5f);
 			NextWinClnSTBySeq(CLN_SEQ_WIN_BTM_L2R_No);
 			break;
+		case IR_BTN_2:
+			NextWinClnSTBySeq(CLN_SEQ_V_F_END_No);
+			break;
 		case IR_BTN_3:
-//			Board_DrvPump(1.0f);
-			NextWinClnSTBySeq(CLN_SEQ_TEST_No);
+//			NextWinClnSTBySeq(CLN_SEQ_TEST_No);
 			break;
 		case IR_BTN_4:
-			NextWinClnSTBySeq(53);
+			NextWinClnSTBySeq(CLN_SEQ_H_F_END_No);
 			break;
 		case IR_BTN_5:
 			NextWinClnSTBySeq(CLN_SEQ_TEST2_START_No);
 			break;
 		case IR_BTN_6:
-			NextWinClnSTBySeq(CLN_SEQ_TEST3_START_No);
+			NextWinClnSTBySeq(CLN_SEQ_H_B_END_No);
 			break;
 		case IR_BTN_7:
 			NextWinClnSTBySeq(4);
 			break;
 		case IR_BTN_8:
-			g_DebugConf.u8CliffSwitch = FALSE;
+			NextWinClnSTBySeq(CLN_SEQ_V_B_END_No);
 			break;
 		case IR_BTN_9:
 			g_DebugConf.u8CliffSwitch = TRUE;
 			break;
-		case IR_BTN_START:
+		case IR_BTN_STAR:
 			/* 左边喷水 */
 			GPIO_write(TOP_WATER_JET_RelayNo, 1);
-			if(g_YKCCtr.i8Tmr_Spray_Front_10ms == -1) {
-				g_YKCCtr.i8Tmr_Spray_Front_10ms = SPRAY_TIMEOUT_10ms;
+			if(g_YKCCtr.i8Tmr_Spray_Front_Tick == -1) {
+				g_YKCCtr.i8Tmr_Spray_Front_Tick = SPRAY_KEEP_TICK;
 			}
 			break;
 		case IR_BTN_SHARP:
 			/* 右边喷水 */
 			GPIO_write(BOT_WATER_JET_RelayNo, 1);
-			if(g_YKCCtr.i8Tmr_Spray_Back_10ms == -1) {
-				g_YKCCtr.i8Tmr_Spray_Back_10ms = SPRAY_TIMEOUT_10ms;
+			if(g_YKCCtr.i8Tmr_Spray_Back_Tick == -1) {
+				g_YKCCtr.i8Tmr_Spray_Back_Tick = SPRAY_KEEP_TICK;
 			}
 			break;
 		case IR_BTN_UP:
@@ -1348,9 +1323,6 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 			g_YKCCtr.fRightDuty = -MAX_DUTY_RATIO;
 			break;
 		case IR_BTN_OK:
-//			g_YKCCtr.fLeftDuty = 0;
-//			g_YKCCtr.fRightDuty = 0;
-//			g_YKCCtr.WinClnST = CLN_ST_IDLE;
 			if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
 				g_YKCCtr.WinClnST = CLN_ST_HANG;
 				Mp3Speak(VOICE_WELCOM, TRUE);		/* 欢迎使用 */
@@ -1360,7 +1332,7 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 				g_YKCCtr.WinClnST_beforeSTOP = g_YKCCtr.WinClnST;
 				g_YKCCtr.WinClnST = CLN_ST_STOP;
 			}
-			g_IRCtrl.u8TryCnt = 0;
+			g_IRCtrl.u8TryCnt = 0;		/* 不清计时器会一直响应. */
 			break;
 		}
 	}
@@ -1398,18 +1370,25 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	Board_DrvWheel(g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty);	/* 运行电机 */
 
 	/* 真空泵 */
-	float32 fPumpPID_P, fPumpPID_I;
+	float32 fPumpPID_P, fPumpPID_I, fVacuumAimErr;
 	if(g_YKCCtr.WinClnST == CLN_ST_IDLE) {
 		g_YKCCtr.fPumpDuty = PUMP_IDLE_DUTY;
-		g_YKCCtr.fAirPressure_PumpIdle = g_MsrRes.fAirPressure;
+		if(g_YKCCtr.uTmr_PumpDeadStop_Tick) {		/* 可能还没完全停止 */
+			g_YKCCtr.uTmr_PumpDeadStop_Tick--;
+		} else {
+			g_YKCCtr.fAirPressure_PumpIdle = g_MsrRes.fAirPressure;
+		}
 	} else {
 		if(g_YKCCtr.fPumpDuty == 0) {	/* 刚启动 */
+			if(g_YKCCtr.uTmr_PumpDeadStop_Tick == 0) {	/* 主要是为了 刚上电就启动了，还没来得及记录空闲气压 */
+				g_YKCCtr.fAirPressure_PumpIdle = g_MsrRes.fAirPressure;
+			}
 			g_YKCCtr.fPumpDuty = 1;
 		} else {
-			float32 fVacuumAimErr = (g_MsrRes.fAirPressure + AIMED_AIR_P - g_YKCCtr.fAirPressure_PumpIdle)/AIMED_AIR_P;
-			fPumpPID_P = fVacuumAimErr*0.02;
-			fPumpPID_I = (fVacuumAimErr - g_YKCCtr.fVacuumAimErr_last)*0.01;
-			g_YKCCtr.fPumpDuty += fPumpPID_P + fPumpPID_I;
+			fVacuumAimErr = (g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure - AIMED_AIR_P)/AIMED_AIR_P;
+			fPumpPID_I = fVacuumAimErr*0.01;
+			fPumpPID_P = (fVacuumAimErr - g_YKCCtr.fVacuumAimErr_last)*0.2;
+			g_YKCCtr.fPumpDuty -= fPumpPID_P + fPumpPID_I;
 			g_YKCCtr.fVacuumAimErr_last = fVacuumAimErr;
 			if(g_YKCCtr.fPumpDuty > 1) {
 				g_YKCCtr.fPumpDuty = 1;
@@ -1417,9 +1396,9 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 				g_YKCCtr.fPumpDuty = 0;
 			}
 			/* 如果吸力不足则进入CLN_ST_STOP */
-			if((g_YKCCtr.u8Tmr_PumpFullSpeed_10ms == 0) && (g_YKCCtr.fVacuumAimErr_last >= VACUUM_AIM_ERR_TOLERANCE)) {
-				if(g_YKCCtr.u8Tmr_VacummSuff_10ms > 0) {		/* 忽略偶尔的气压偏低 */
-					g_YKCCtr.u8Tmr_VacummSuff_10ms--;
+			if((g_YKCCtr.u8Tmr_PumpFullSpeed_Tick == 0) && (g_YKCCtr.fVacuumAimErr_last >= VACUUM_AIM_ERR_TOLERANCE)) {
+				if(g_YKCCtr.u8Tmr_VacummSuff_Tick > 0) {		/* 忽略偶尔的气压偏低 */
+					g_YKCCtr.u8Tmr_VacummSuff_Tick--;
 				} else {		/* 气压持续偏低 */
 					if(g_YKCCtr.WinClnST != CLN_ST_STOP) {
 					#if LOW_AIR_CLOSE_CLN
@@ -1430,13 +1409,13 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 					Mp3Speak(VOICE_AIR_PRES_LOW, FALSE);
 				}
 			} else {
-				g_YKCCtr.u8Tmr_VacummSuff_10ms = PUMP_TICK_VACUMM_SUFF;
+				g_YKCCtr.u8Tmr_VacummSuff_Tick = PUMP_TICK_VACUMM_SUFF;
 			}
 		}
-		if(g_YKCCtr.u8Tmr_PumpFullSpeed_10ms) {
-			g_YKCCtr.u8Tmr_PumpFullSpeed_10ms--;
+		if(g_YKCCtr.u8Tmr_PumpFullSpeed_Tick) {
+			g_YKCCtr.u8Tmr_PumpFullSpeed_Tick--;
 		}
-//		g_YKCCtr.fPumpDuty = 1.0f;
+		g_YKCCtr.uTmr_PumpDeadStop_Tick = PUMP_TICK_DEAD_STOP;
 	}
 
 #if PUMP_DEACTIVE
@@ -1445,25 +1424,23 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 	Board_DrvPump(g_YKCCtr.fPumpDuty);		/* 执行 */
 #endif
 
-//	uint32 u32Flag = g_Ctr.u32DinDat + (g_YKCCtr.bRightStall<<14) + (g_YKCCtr.bLeftStall<<15)
-//					 + (g_YKCCtr.WinClnST<<16) + (g_YKCCtr.u8ClnSeqNo<<24);
-//	uint32 u32Flag = u8StallCode + (g_YKCCtr.bRightStall<<14) + (g_YKCCtr.bLeftStall<<15)
-//					 + (g_YKCCtr.WinClnST<<16) + (g_YKCCtr.u8ClnSeqNo<<24);
-	uint32 u32Flag = (g_Ctr.u32DinDat & 0x3fff) + ((u8StallCode & 0b1111) << 14)
+	uint32 u32Flag = (g_Ctr.u32DinDat & 0x3fff) + ((g_YKCCtr.u8StallCode & 0b1111) << 14)
 						 + ((g_YKCCtr.WinClnST & 0b111111) << 18) + (g_YKCCtr.u8ClnSeqNo<<24);
+
 #if 0
 	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle, 
 				g_YKCCtr.fAngle, fRightTrip, fLeftTrip, g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fPitch, fd);
 #elif 1
-//	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle,
-//				g_YKCCtr.fAngle, fRightTrip, fLeftTrip, g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fRightCur, g_MsrRes.fLeftCur);
 	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle,
 					g_YKCCtr.fAngle, g_YKCCtr.fAirPressure_PumpIdle - g_MsrRes.fAirPressure, g_YKCCtr.fPumpDuty,
 					g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, g_MsrRes.fRightCur, g_MsrRes.fLeftCur);
-
-
 #elif 0
-	Rec_DebugPack(u32Flag, g_MsrRes.fAirPressure, fPumpPID_P, fPumpPID_I, g_YKCCtr.fPumpDuty, g_MsrRes.fPumpFreq, 0, 0, 0, 0, 0, 0);
+	Rec_DebugPack(u32Flag, g_MsrRes.fAx, g_MsrRes.fAy, g_MsrRes.fAz, g_YKCCtr.fAimedAngle,
+				g_YKCCtr.fAngle, g_MsrRes.fGxDelta_rad, g_MsrRes.fGyDelta_rad, g_MsrRes.fGzDelta_rad, g_MsrRes.fGx, g_MsrRes.fGy, g_MsrRes.fGz);
+#elif 1
+	Rec_DebugPack(u32Flag, g_YKCCtr.fRightDuty, g_YKCCtr.fLeftDuty, g_YKCCtr.i32Forward, g_YKCCtr.fAimedAngle,
+				g_YKCCtr.fAngle, fWheelPID_P, fWheelPID_I, g_MsrRes.fRightFreq, g_MsrRes.fLeftFreq, fabsf(fRightTrip/fLeftTrip), fVr2lAimErr);
+	//Rec_DebugPack(u32Flag, g_MsrRes.fAirPressure, fPumpPID_P, fPumpPID_I, g_YKCCtr.fPumpDuty, g_MsrRes.fPumpFreq, 0, 0, 0, 0, 0, 0);
 #else
 	Rec_DebugPack(u32Flag, g_MsrRes.iAccX, g_MsrRes.iAccY, g_MsrRes.iAccZ, g_YKCCtr.fAngle, g_MsrRes.fPitch, g_MsrRes.fRoll, 0, 0, 0, 0, 0);
 #endif
@@ -1482,35 +1459,35 @@ void RunMdlCtr(void)		/* rename from RunYKC */
 				GPIO_write(BOT_WATER_JET_RelayNo, 1);
 #endif
 			}
-			if(g_YKCCtr.i8Tmr_Spray_Front_10ms == -1) {
-				g_YKCCtr.i8Tmr_Spray_Front_10ms = SPRAY_TIMEOUT_10ms;
+			if(g_YKCCtr.i8Tmr_Spray_Front_Tick == -1) {
+				g_YKCCtr.i8Tmr_Spray_Front_Tick = SPRAY_KEEP_TICK;
 			}
-			if(g_YKCCtr.i8Tmr_Spray_Back_10ms == -1) {
-				g_YKCCtr.i8Tmr_Spray_Back_10ms = SPRAY_TIMEOUT_10ms;
+			if(g_YKCCtr.i8Tmr_Spray_Back_Tick == -1) {
+				g_YKCCtr.i8Tmr_Spray_Back_Tick = SPRAY_KEEP_TICK;
 			}
 			g_YKCCtr.i32TripCntForSpray = 15000;		/* 两次喷水间隔步数 */
 		}
 	}
 
 	/* 更新前喷水开出状态， -1 未使用 / 0 该停了/ n 开始计时 */
-	if(g_YKCCtr.i8Tmr_Spray_Front_10ms == 0) {
+	if(g_YKCCtr.i8Tmr_Spray_Front_Tick == 0) {
 		GPIO_write(TOP_WATER_JET_RelayNo, 0);
 		if(!GPIO_read(LOW_LIQUID_WRN_DInNo)) {
 			Mp3Speak(VOICE_LIQUID_LOW, FALSE);
 		}
-		g_YKCCtr.i8Tmr_Spray_Front_10ms = -1;
-	} else if(g_YKCCtr.i8Tmr_Spray_Front_10ms > 0) {
-		g_YKCCtr.i8Tmr_Spray_Front_10ms--;
+		g_YKCCtr.i8Tmr_Spray_Front_Tick = -1;
+	} else if(g_YKCCtr.i8Tmr_Spray_Front_Tick > 0) {
+		g_YKCCtr.i8Tmr_Spray_Front_Tick--;
 	}
 	/* 更新后喷水电机状态， -1 未使用 / 0 该停了/ n 开始计时 */
-	if(g_YKCCtr.i8Tmr_Spray_Back_10ms == 0) {
+	if(g_YKCCtr.i8Tmr_Spray_Back_Tick == 0) {
 		GPIO_write(BOT_WATER_JET_RelayNo, 0);
 		if(!GPIO_read(LOW_LIQUID_WRN_DInNo)) {
 			Mp3Speak(VOICE_LIQUID_LOW, FALSE);
 		}
-		g_YKCCtr.i8Tmr_Spray_Back_10ms = -1;
-	} else if(g_YKCCtr.i8Tmr_Spray_Back_10ms > 0) {
-		g_YKCCtr.i8Tmr_Spray_Back_10ms--;
+		g_YKCCtr.i8Tmr_Spray_Back_Tick = -1;
+	} else if(g_YKCCtr.i8Tmr_Spray_Back_Tick > 0) {
+		g_YKCCtr.i8Tmr_Spray_Back_Tick--;
 	}
 
 	g_YKCCtr.u32DinDat_last = g_Ctr.u32DinDat;
@@ -1707,7 +1684,7 @@ BOOL PubSpecialData(MQTT_COMM* pMqttComm)
 	PrintF32DatToJson(&pTxBuf, "Idle", g_YKCCtr.fAirPressure_PumpIdle, 6);
 	PrintF32DatToJson(&pTxBuf, "fAirPressure", g_MsrRes.fAirPressure, 6);
 	PrintF32DatToJson(&pTxBuf, "真空泵Duty", g_YKCCtr.fPumpDuty, 2);
-	PrintU32DatToJson(&pTxBuf, "StallNo", u8StallCode, 0);
+	PrintU32DatToJson(&pTxBuf, "StallNo", g_YKCCtr.u8StallCode, 0);
 //	PrintU32DatToJson(&pTxBuf, "RightCnt", g_MsrRes.uRightCount, 0);
 //	PrintU32DatToJson(&pTxBuf, "LeftCnt", g_MsrRes.uLeftCount, 0);
 	*pTxBuf++ = '"';
@@ -1715,7 +1692,7 @@ BOOL PubSpecialData(MQTT_COMM* pMqttComm)
 	*pTxBuf++ = '"';
 	*pTxBuf++ = ':';
 	*pTxBuf++ = '"';
-	PrintString(&pTxBuf, pTxBuf + 50, pChTallCause);
+	PrintString(&pTxBuf, pTxBuf + 50, g_YKCCtr.pChTallCause);
 	*pTxBuf++ = '"';
 	*pTxBuf++ = ',';
 	PrintF32DatToJson(&pTxBuf, "RightI", g_MsrRes.fRightCur, 2);
@@ -1738,7 +1715,7 @@ BOOL PubSpecialData(MQTT_COMM* pMqttComm)
 	pTxBuf--;
 	*pTxBuf++ = '}';					/* Json结尾 */
 	/* 本机信息发布:传输 */
-	pChTallCause = "";
+	g_YKCCtr.pChTallCause = "";
 	return PublishMqtt(pMqttComm, pTxBuf, uMsgIDPt, u8QoS);	/* QoS修改必须在本段代码开始的位置 */
 }
 

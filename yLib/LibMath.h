@@ -99,6 +99,14 @@ typedef struct {					/* 数据均匀采样记录 */
 	uint32 u32DatBuf[];
 }u32DAT_UNI_REC;
 
+typedef struct {						/* 数据均匀采样记录 */
+	float32 fAvr;
+	float32 fRmsE;
+	uint16 uDatOKDecCnt;
+	uint16 uRecPt;						/* 总是指向当前数据存储位置 */
+	float32 fDatBuf[];
+}fDAT_UNI_REC;
+
 /* 模拟量矫正算法1 */
 typedef struct {		/* 模拟信号测量修正 */
 	float32 fZeroCorr;							/* 调零 */
@@ -123,6 +131,11 @@ EXT void InitU32DatUniRec(u32DAT_UNI_REC* pDatRec, uint16 uBufLen);
 EXT void UniRecU32DatToBuf(u32DAT_UNI_REC* pDatRec, uint16 uBufLen, uint32 uData);
 EXT BOOL ProcUniRecU32DatAsWave(u32DAT_UNI_REC* pDatRec, uint16 uBufLen, uint16 uCalStartPt, uint16 uCalLen);
 EXT BOOL FilterUniRecU32Dat(u32DAT_UNI_REC* pDatRec, uint16 uBufLen, uint16 uCalStartPt);
+
+EXT void InitfDatUniRec(fDAT_UNI_REC* pDatRec, uint16 uBufLen);
+EXT void UniRecfDatToBuf(fDAT_UNI_REC* pDatRec, uint16 uBufLen, float32 fData);
+EXT BOOL ProcUniRecfDatAsWave(fDAT_UNI_REC* pDatRec, uint16 uBufLen);
+EXT float32 ProcUniRecfDatAsSlant(fDAT_UNI_REC* pDatRec, uint16 uBufLen);
 
 /* 把数值<>文本相互转化, 所有pTextEnd指向队尾后一个(不可存储)的地址 */
 EXT BOOL PrintF32(uint8** ppBuf, uint8* pBufEnd, float32 fData, int8 i8SgnDigits_pMax_nExpect);

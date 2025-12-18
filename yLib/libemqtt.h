@@ -153,12 +153,12 @@ uint16_t mqtt_parse_publish_msg(const uint8_t* buf, uint8_t* msg);
 uint16_t mqtt_parse_pub_msg_ptr(const uint8_t* buf, const uint8_t** msg_ptr);
 
 typedef struct {
-	uint32_t (*NewSocket)(int32_t domain, int32_t type, int32_t protocl);
-	int32_t (*Connect)(uint32_t socketFd, struct sockaddr_in* pName, int32_t len);
-	int32_t (*Send)(uint32_t socketFd, uint8_t *pBuf, int32_t iSendBLen, int32_t flags);
-	int32_t (*Recv)(uint32_t socketFd, uint8_t* pBuf, int32_t iReadBLen, int32_t flags);
-	int32_t (*Close)(uint32_t socketFd);
-	int32_t (*SetSockopt)(uint32_t socketFd, int32_t u32Level, int32_t u32Op, void *pbuf, int32_t i32Bufsize);
+	int32_t (*NewSocket)(int32_t domain, int32_t type, int32_t protocl);
+	int32_t (*Connect)(int32_t socketFd, struct sockaddr_in* pName, int32_t len);
+	int32_t (*Send)(int32_t socketFd, uint8_t *pBuf, int32_t i32SendBLen, int32_t i32Flags);
+	int32_t (*Recv)(int32_t socketFd, uint8_t* pBuf, int32_t i32ReadBLen, int32_t i32Flags);
+	int32_t (*Close)(int32_t socketFd);
+	int32_t (*SetSockopt)(int32_t socketFd, int32_t u32Level, int32_t u32Op, void *pbuf, int32_t i32Bufsize);
 	uint8_t (*DnsQuery)(uint8_t *pBuf, uint32_t *pU32IpResolved);			/* º¯Êý×Ô¼º¸ºÔðÍ¬²½£¬·µ»ØIP£¬´ó¶Ë */
 } SocketFunction;
 

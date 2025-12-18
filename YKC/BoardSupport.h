@@ -210,7 +210,7 @@ typedef struct {
 
 #ifdef _LIB_MATH_C_
 const I2C_BSP cnst_I2C_BSP[I2C_COMM_NUM] = {
-		{GPIOB, GPIO_PIN_8, GPIOB, GPIO_PIN_9}
+		{(uint32)GPIOB, GPIO_PIN_8, (uint32)GPIOB, GPIO_PIN_9}
 };
 #else
 extern const I2C_BSP cnst_I2C_BSP[I2C_COMM_NUM];

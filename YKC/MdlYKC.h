@@ -81,27 +81,21 @@ typedef struct {								/* modbus通讯地址: 9200，注意地址步进是2 */
 	/* 气压计 */
 	float32 fAirPressure;		/* 真空度 */
 	float32 fAirTemp;			/* 气压计温度 */
-	float32 fAimed_Air_P;		/* 期望抽的压差 */
 	uint8 u8TryCnt_AirSensor;	/* 气压计传感器通讯指示 */
 
 
 	/* IMU数据 */
 	uint8 u8TryCnt_IMU;
-	uint16 uRsvd;
-	int16 iAccX;				/* X轴加速度 */
-	int16 iAccY;				/* Y轴加速度 */
-	int16 iAccZ;				/* Z轴加速度 */
-	int16 iGyroX;
-	int16 iGyroY;
-	int16 iGyroZ;
+	uint16 fGyrZ;				/* Z轴方向的角速度 */
 	float32 fPitch;				/* ° */
+	float32 fPitchDelta_rad;	/* Pitch的变化量，rad */
 	float32 fRoll;				/* ° */
 	float32 fYaw;
 
 	/* 转速计 */
 	float32 fPumpFreq;
-	float32 fRightFreq;
-	float32 fLeftFreq;
+	float32 fRightFreq;		/* 前进为正频率，后退为负频率 */
+	float32 fLeftFreq;		/* 前进为正频率，后退为负频率 */
 	uint16 uRightCount;
 	uint16 uLeftCount;
 }MSR_RES;
@@ -109,8 +103,11 @@ EXT SECTION(".NOT_ZeroInit") MSR_RES g_MsrRes;
 
 /* 调试相关 */
 typedef struct {
-	uint8 u8GprsDebugSwitch;			/* GPRS串口调试信息开关 */
-	uint8 u8CliffSwitch;				/* 是否启用悬崖开关 */
+	float32 fAimed_Air_P;			/* 期望抽的压差 */
+	uint32 u8GprsDebugSwitch;		/* GPRS串口调试信息开关 */
+	uint32 u8CliffSwitch;			/* 是否启用悬崖开关 */
+	uint32 u8GyroSwitch;			/* 陀螺仪中断判断堵转开关 */
+	float32 fFilterFactor;			/* 滤波因子 */
 }DebugConf;
 EXT SECTION(".NOT_ZeroInit") DebugConf g_DebugConf;
 
@@ -128,8 +125,8 @@ EXT SECTION(".NOT_ZeroInit") DebugConf g_DebugConf;
 #define	IR_BTN_7		224
 #define	IR_BTN_8		168
 #define	IR_BTN_9		144
-#define	IR_BTN_START	104
-#define	IR_BTN_SHARP	176
+#define	IR_BTN_STAR		104		/* 星号键 */
+#define	IR_BTN_SHARP	176		/* #号键 */
 #define	IR_BTN_UP		24
 #define	IR_BTN_DOWN		74
 #define	IR_BTN_LEFT		16

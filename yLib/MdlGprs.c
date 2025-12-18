@@ -674,14 +674,15 @@ int32 GprsConnect(SOCKET socketFd, struct sockaddr_in* pName, int32 i32Len)
 
 #define MAX_ONCE_SEND_BLEN	1000
 /* 阻塞式发送数据 */
-int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag)
+int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, int32 i32SendBlen, int32 i32Flag)
+//int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, int32 u32Flag)
 {
 	int32 i32Result = 0;
 	GPRS_RES eRes;
 	uint32 u32AllSentLen = 0;			/* 所有已经发送的字节数 */
-	uint32 u32AllSendLen = uSendBlen;	/* 一共要发送的字节数 */
+	uint32 u32AllSendLen = i32SendBlen;	/* 一共要发送的字节数 */
 	GPRS_SOCKET* pSocket = &g_GprsComm.Socket[socketFd - 1];
-	if((socketFd <= 0) || (!uSendBlen) || (!pSrcBuf)) {
+	if((socketFd <= 0) || (i32SendBlen <= 0) || (!pSrcBuf)) {
 		i32Result = GPRS_ERR_ARG;
 	} else {
 		if(Semaphore_pend(g_GprsComm.Sem_GprsReq, OS_TICK_KHz*GPRS_REQ_TIMEOUT_ms)) {
@@ -703,10 +704,10 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 				for(; u32AllSentLen < u32AllSendLen;) {
 					/* 大于MAX_ONCE_SEND_BLEN的分次发送 */
 					uint16 uEverySendBlen;
-					if(uSendBlen > MAX_ONCE_SEND_BLEN) {
+					if(i32SendBlen > MAX_ONCE_SEND_BLEN) {
 						uEverySendBlen = MAX_ONCE_SEND_BLEN;
 					} else {
-						uEverySendBlen = uSendBlen;
+						uEverySendBlen = i32SendBlen;
 					}
 					/* 填充打印 */
 					uint8* pBuf = pU8SendLenIndex;
@@ -724,7 +725,7 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 						}
 						if(GPRS_SendATCmd(NULL, "SEND OK", NULL, NULL, NULL, 5, 100) == GPRS_SUC) {	/* 发送成功 */
 							u32AllSentLen += uEverySendBlen;
-							uSendBlen -= uEverySendBlen;
+							i32SendBlen -= uEverySendBlen;
 						} else {	/* 发送失败 认为是断开连接 */
 							i32Result = GPRS_ERR_CONNECTION_ABN;
 							break;
@@ -761,7 +762,7 @@ int32 GprsSend(SOCKET socketFd, uint8 *pSrcBuf, uint16 uSendBlen, uint32 u32Flag
 
 /* 注意接收的长度 + 帧头帧尾 + 无用数据长度(均按照最大长度计算) 必须小于单个DMA的接收缓冲区大小.
  * 因为要确保接收的无用数据至少有一个完整的帧在缓冲区中, 方便去除 */
-int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Flags)
+int32 GprsRecv(SOCKET socketFd, uint8 *pU8DstBuf, int32 i32ReadBLen, int32 i32Flag)
 {
 	int32 i32Result = 0;
 	uint32 u32ReadAllBLen = 0;	/* 读取的总字节数 */

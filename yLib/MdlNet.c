@@ -39,7 +39,6 @@
 #include "MdlNet.h"
 #include "MdlDataAccess.h"
 #include "MdlGUI.h"
-//#include "MdlUARTnModbus.h"
 
 #if SUPPORT_V4_MASTER
 #include "MdlV4Master.h"
@@ -59,10 +58,6 @@
 
 /* MQTT header files */
 #include "libemqtt.h"
-
-#if SUPPORT_GPRS
-#include "MdlGprs.h"
-#endif
 
 
 #define SOCKET_RCV_TIMEOUT_s		5				/* socket读取超时 */
@@ -146,9 +141,9 @@ BOOL OpenMqttSocketAndConnMqttServer(uint8 u8MqttTaskNo)
 	*pTxBuf++ = 0;
 	int16 i, j;
 	uint8 u8DnsAndTcpConRes = 0;	/* b5~4,b3~2,b1~0:三个服务器dns+tcp连接情况--0未尝试,1dns失败,2dns成功tcp失败,3tcp成功 */
-	const SocketFunction *pSocketFunc = NULL;
+	SocketFunction *pSocketFunc = NULL;
 	for(j = 0; j < MAX_INTERNET_ACCESS_NUM; j++) {
-		pSocketFunc = &AllSocketFun[j];
+		pSocketFunc = (SocketFunction *)&AllSocketFun[j];
 		uint8 u8DnsAndTcpConRes = 0;	/* b5~4,b3~2,b1~0:三个服务器dns+tcp连接情况--0未尝试,1dns失败,2dns成功tcp失败,3tcp成功 */
 		for(i = 3; i > 0; i--) {
 			pMqttComm->u8ServerNo++;
@@ -200,7 +195,7 @@ BOOL OpenMqttSocketAndConnMqttServer(uint8 u8MqttTaskNo)
 				socket_address.sin_addr.s_addr = u32IpResolved;		//TODO: ETHERNET:((HOSTENT*)(&pMqttComm->u8TRBuf[DNS_DOMAIN_MAX_LEN]))->h_addr[0]
 				socket_address.sin_family = AF_INET;
 				socket_address.sin_port = htons(1883);		/* 固定端口 */
-				if(pSocketFunc->Connect(pMqttComm->MqttSocket, (struct sockaddr*)&socket_address, sizeof(socket_address)) < 0) {	/* TCP连接失败 */
+				if(pSocketFunc->Connect(pMqttComm->MqttSocket, &socket_address, sizeof(socket_address)) < 0) {	/* TCP连接失败 */
 					u8DnsAndTcpConRes |= (2<<((pMqttComm->u8ServerNo-1)*2));
 					pSocketFunc->Close(pMqttComm->MqttSocket);
 				} else {
@@ -226,7 +221,7 @@ BOOL OpenMqttSocketAndConnMqttServer(uint8 u8MqttTaskNo)
 	mqtt_init(pBroker, (const char*)pMqttComm->u8TRBuf);						/* 系统函数，mqtt初始化 */
 	mqtt_init_auth(pBroker, "RwRVZXjkUO", "EGsWBH303D");						/* 系统函数，初始化登录用户名、密码 */
 	mqtt_set_alive(pBroker, 60);												/* 填充MQTT的保持时间:30秒 */
-	pBroker->socket_info = pMqttComm->MqttSocket;								/* 填充MQTT的套接字 */
+	pBroker->socket_info = (void *)(intptr_t)pMqttComm->MqttSocket;						/* 填充MQTT的套接字 */
 	pBroker->pSocketFunc = pSocketFunc;
 
 	/* Mqtt连接，即发出 "MQTT_CONNECT", 请求连接，并等待响应 */
@@ -1408,7 +1403,7 @@ BOOL SyncRealTimeBySNTP(MQTT_COMM* pMqttComm, const uint32 cnst_u32NTPSever)
 			socket_address.sin_addr.s_addr = htonl(cnst_u32NTPSever);
 			socket_address.sin_family = AF_INET;
 			socket_address.sin_port = htons(123);	/* fix 123 */
-			if(pSocketFun->Connect(i32SocketSNTP, (struct sockaddr*)&socket_address, sizeof(socket_address)) >= 0) {
+			if(pSocketFun->Connect(i32SocketSNTP, &socket_address, sizeof(socket_address)) >= 0) {
 				/* Initialize the SNTP packet, setting version and mode = client */
 				SNTPHeader sntpPkt;
 				memset(&sntpPkt, 0, sizeof(SNTPHeader));

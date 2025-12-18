@@ -403,157 +403,25 @@ float32 CalcForwardAccel(int16_t iAccX, int16_t iAccY, int16_t iAccZ,
 }
 
 #include "BMI270.h"		/* IMU */
-#if 0
-/* 更新IMU六轴和计算姿态数据，陀螺仪内部输出频率可配置范围是0.02-1.6KHz，可开启的低通滤波频率范围是5.5-751Hz*/
+/* 根据六轴数据计算姿势角度数据 */
 void UpdateIMU(void)
 {
-    /* 根据六轴数据计算姿势角度数据 */
-	Bmi270GetAcc();             /* 获取 IMU660RA 的加速度测量数值 */
-	Bmi270GetGyro();            /* 获取 IMU660RA 的角速度测量数值 */
-	static float32 s_fQ0 = 1, s_fQ1 = 0, s_fQ2 = 0, s_fQ3 = 0;      /* 四元数的元素，代表估计方向 */
-	static float32 s_fExInt = 0, s_fEyInt = 0, s_fEzInt = 0;      /* 按比例缩小积分误差 */
-	int16 iGyrX = g_Bmi270Comm.iGyrX;
-	int16 iGyrY = g_Bmi270Comm.iGyrY;
-	int16 iGyrZ = g_Bmi270Comm.iGyrZ;
-	int16 iAccX = g_Bmi270Comm.iAccX;
-	int16 iAccY = g_Bmi270Comm.iAccY;
-	int16 iAccZ = g_Bmi270Comm.iAccZ;
-	if(iGyrX && iGyrY && iGyrZ && iAccX && iAccY && iAccZ) {
-		float32 fGx = iGyrX / 16384.0;
-		float32 fGy = iGyrY / 16384.0;
-		float32 fGz = iGyrZ / 16384.0;
-		float32 fAx = iAccX;
-		float32 fAy = iAccY;
-		float32 fAz = iAccZ;
-
-		/* 计算归一化因子 */
-		float32 fNorm = sqrtf(fAx * fAx + fAy * fAy + fAz * fAz);
-
-		if(fNorm != 0) {
-
-			fAx = fAx / fNorm;                   /* 归一化 */
-			fAy = fAy / fNorm;
-			fAz = fAz / fNorm;
-
-			/* 估计方向的重力 */
-			float32 fVx = 2 * (s_fQ1 * s_fQ3 - s_fQ0 * s_fQ2);
-			float32 fVy = 2 * (s_fQ0 * s_fQ1 + s_fQ2 * s_fQ3);
-			float32 fVz = s_fQ0 * s_fQ0 - s_fQ1 * s_fQ1 - s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3;
-
-			/* 错误的领域和方向传感器测量参考方向之间的交叉乘积的总和 */
-			float32 fEx = (fAy * fVz - fAz * fVy);
-			float32 fEy = (fAz * fVx - fAx * fVz);
-			float32 fEz = (fAx * fVy - fAy * fVx);
-
-			/* 积分误差比例积分增益 */
-			s_fExInt = s_fExInt + fEx * KI;
-			s_fEyInt = s_fEyInt + fEy * KI;
-			s_fEzInt = s_fEzInt + fEz * KI;
-
-			/* 调整后的陀螺仪测量 */
-			fGx = fGx + KP * fEx + s_fExInt;
-			fGy = fGy + KP * fEy + s_fEyInt;
-			fGz = fGz + KP * fEz + s_fEzInt;
-
-			/* 整合四元数率和正常化 */
-			float32 q0 = s_fQ0;
-			float32 q1 = s_fQ1;
-			float32 q2 = s_fQ2;
-			float32 q3 = s_fQ3;
-			s_fQ0 = q0 + (-q1 * fGx - q2 * fGy - q3 * fGz) * HALF_T;
-			s_fQ1 = q1 + (q0 * fGx + q2 * fGz - q3 * fGy) * HALF_T;
-			s_fQ2 = q2 + (q0 * fGy - q1 * fGz + q3 * fGx) * HALF_T;
-			s_fQ3 = q3 + (q0 * fGz + q1 * fGy - q2 * fGx) * HALF_T;
-
-			/* 计算四元数向量长度 */
-			fNorm = sqrtf(s_fQ0 * s_fQ0 + s_fQ1 * s_fQ1 + s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3);
-
-			if(fNorm != 0) {
-				/* 归一化四元数 */
-				s_fQ0 = s_fQ0 / fNorm;
-				s_fQ1 = s_fQ1 / fNorm;
-				s_fQ2 = s_fQ2 / fNorm;
-				s_fQ3 = s_fQ3 / fNorm;
-				/* 驱动全局变量 */
-				g_MsrRes.iGyroX = g_Bmi270Comm.iGyrX;
-				g_MsrRes.iGyroY = g_Bmi270Comm.iGyrY;
-				g_MsrRes.iGyroZ = g_Bmi270Comm.iGyrZ;
-				g_MsrRes.iAccX = g_Bmi270Comm.iAccX;
-				g_MsrRes.iAccY = g_Bmi270Comm.iAccY;
-				g_MsrRes.iAccZ = g_Bmi270Comm.iAccZ;
-
-				/* 计算陀螺仪角度： */
-				float32 R[3][3];
-				R[0][0] = 1 - 2 * s_fQ2 * s_fQ2 - 2 * s_fQ3 * s_fQ3;
-			    R[0][1] = 2 * s_fQ1 * s_fQ2 - 2*s_fQ0 * s_fQ3;
-			    R[0][2] = 2 * s_fQ1 * q3 + 2 * s_fQ0 * s_fQ2;
-
-			    R[1][0] = 2 * s_fQ1 * s_fQ2 + 2 * s_fQ0 * s_fQ3;
-			    R[1][1] = 1 - 2 * s_fQ1 * s_fQ1 - 2 * s_fQ3 * s_fQ3;
-			    R[1][2] = 2 * s_fQ2 * s_fQ3 - 2 * s_fQ0 * s_fQ1;
-
-			    R[2][0] = 2 * s_fQ1 * s_fQ3 - 2 * s_fQ0 * s_fQ2;
-			    R[2][1] = 2 * s_fQ2 * s_fQ3 + 2 * s_fQ0 * s_fQ1;
-			    R[2][2] = 1 - 2 * s_fQ1 * s_fQ1 - 2 * s_fQ2 * s_fQ2;
-				float32 ang_rad= atan2(R[1][0], R[0][0]);
-				g_MsrRes.fPitch = ang_rad * (180.0f / M_PI);
-			    g_MsrRes.u8TryCnt_IMU = 5;
-				return;
-
-				g_MsrRes.fPitch  = asinf(-2 * s_fQ1 * s_fQ3 + 2 * s_fQ0 * s_fQ2) * 57.3; /* pitch ,转换为度数 */
-
-				if(g_Bmi270Comm.iAccY > 0) {	/* 板子装反了 */
-					if(g_MsrRes.fPitch > 0) {
-						g_MsrRes.fPitch = 180 - g_MsrRes.fPitch;
-					} else {
-						g_MsrRes.fPitch = 0 - 180 - g_MsrRes.fPitch;
-					}
-				}
-				g_MsrRes.fPitch += 90;		/* 正上方是0度 */
-			/*	if (g_MsrRes.fPitch < 0) {
-				    g_MsrRes.fPitch += 360; // 如果是负数，增加360度
-				}*/
-				g_MsrRes.fRoll = atan2f(2 * s_fQ2 * s_fQ3 + 2 * s_fQ0 * s_fQ1, -2 * s_fQ1 * s_fQ1 - 2 * s_fQ2 * s_fQ2 + 1) * 57.3; /* roll */
-				g_MsrRes.u8TryCnt_IMU = 5;
-				return;
-			}
-		}
-	}
-	/* 如果到这里就算此次通信失败了 */
-	if(g_MsrRes.u8TryCnt_IMU) {
-		g_MsrRes.u8TryCnt_IMU--;
-	}
-}
-#else
-static float32 fXAcc, fYAcc, fZAcc;
-void UpdateIMU(void)
-{
-    /* 根据六轴数据计算姿势角度数据 */
-	Bmi270GetAcc();             /* 获取 IMU660RA 的加速度测量数值 */
-	Bmi270GetGyro();            /* 获取 IMU660RA 的角速度测量数值 */
-	static float32 s_fQ0 = 1, s_fQ1 = 0, s_fQ2 = 0, s_fQ3 = 0;      /* 四元数的元素，代表估计方向 */
-	static float32 s_fExInt = 0, s_fEyInt = 0, s_fEzInt = 0;      	/* 按比例缩小积分误差 */
-	int16 iGyrX = g_Bmi270Comm.iGyrX;
-	int16 iGyrY = g_Bmi270Comm.iGyrY;
-	int16 iGyrZ = g_Bmi270Comm.iGyrZ;
-	int16 iAccX = g_Bmi270Comm.iAccX;
-	int16 iAccY = g_Bmi270Comm.iAccY;
-	int16 iAccZ = g_Bmi270Comm.iAccZ;
-	fXAcc = iAccX / 16384.0f;
-	fYAcc = iAccY / 16384.0f;
-	fZAcc = iAccZ / 16384.0f;
-	if(iGyrX && iGyrY && iGyrZ && iAccX && iAccY && iAccZ) {
-
+	static float32 s_fQ0 = 1, s_fQ1 = 0, s_fQ2 = 0, s_fQ3 = 0;      /* 板子相对水平摆放的旋转(四元数表达)，含重力方向的信息 */
+	static float32 s_fExInt = 0, s_fEyInt = 0, s_fEzInt = 0;      	/* 积分误差 */
+	if(Bmi270GetAcc() && Bmi270GetGyro() 	/* 获取 IMU660RA 的加速度、角速度测量数值 */
+		&& g_Bmi270Comm.iGyrX && g_Bmi270Comm.iGyrY && g_Bmi270Comm.iGyrZ 
+		&& g_Bmi270Comm.iAccX && g_Bmi270Comm.iAccY && g_Bmi270Comm.iAccZ)
+	{
 		 /* ========== 1. 量程缩放 ========== */
-		// 陀螺仪 (±2000 dps → 除以 16.4)
-		float32 fGx = (float)iGyrX / 16.4f * (M_PI / 180.0f); // 转换成 rad/s
-		float32 fGy = (float)iGyrY / 16.4f * (M_PI / 180.0f);
-		float32 fGz = (float)iGyrZ / 16.4f * (M_PI / 180.0f);
+		// 陀螺仪从整数接口转为rad/s (±2000 dps → 除以 16.4)
+		float32 fGx = (float)g_Bmi270Comm.iGyrX / 16.4f * (M_PI / 180.0f); // 转换成 rad/s
+		float32 fGy = (float)g_Bmi270Comm.iGyrY / 16.4f * (M_PI / 180.0f);
+		float32 fGz = (float)g_Bmi270Comm.iGyrZ / 16.4f * (M_PI / 180.0f);
 
 		// 加速度计 (±2g → 除以 16384)
-		float32 fAx = iAccX / 16384.0f;
-		float32 fAy = iAccY / 16384.0f;
-		float32 fAz = iAccZ / 16384.0f;
+		float32 fAx = g_Bmi270Comm.iAccX / 16384.0f;
+		float32 fAy = g_Bmi270Comm.iAccY / 16384.0f;
+		float32 fAz = g_Bmi270Comm.iAccZ / 16384.0f;
 
 		/* ========== 2. 归一化加速度 (用于重力方向) ========== */
 		float32 fNorm = sqrtf(fAx * fAx + fAy * fAy + fAz * fAz);		/* 计算归一化因子 */
@@ -561,27 +429,28 @@ void UpdateIMU(void)
 			fAx = fAx / fNorm;                   /* 归一化 */
 			fAy = fAy / fNorm;
 			fAz = fAz / fNorm;
-			/* 估计方向的重力 */
+			/* 由四元数估计重力方向 */
 			float32 fVx = 2.0f * (s_fQ1 * s_fQ3 - s_fQ0 * s_fQ2);
 			float32 fVy = 2.0f * (s_fQ0 * s_fQ1 + s_fQ2 * s_fQ3);
 			float32 fVz = s_fQ0 * s_fQ0 - s_fQ1 * s_fQ1 - s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3;
 
-			/* 错误的领域和方向传感器测量参考方向之间的交叉乘积的总和 */
+			/* 四元数与加速度传感器测量的误差--用叉积求误差 */
 			float32 fEx = (fAy * fVz - fAz * fVy);
 			float32 fEy = (fAz * fVx - fAx * fVz);
 			float32 fEz = (fAx * fVy - fAy * fVx);
 
 			/* 积分误差比例积分增益 */
-			s_fExInt = s_fExInt + fEx * KI;
-			s_fEyInt = s_fEyInt + fEy * KI;
-			s_fEzInt = s_fEzInt + fEz * KI;
+			s_fExInt += fEx * KI;
+			s_fEyInt += fEy * KI;
+			s_fEzInt += fEz * KI;
+			g_MsrRes.fPitchDelta_rad = (fGz + s_fEzInt) * 2.0f * HALF_T;	/* 用仅补偿零漂的Gy计算Pitch改变 */
 
 			/* 调整后的陀螺仪测量 */
-			fGx = fGx + KP * fEx + s_fExInt;
-			fGy = fGy + KP * fEy + s_fEyInt;
-			fGz = fGz + KP * fEz + s_fEzInt;
+			fGx += KP * fEx + s_fExInt;
+			fGy += KP * fEy + s_fEyInt;
+			fGz += KP * fEz + s_fEzInt;
 
-			/* 整合四元数率和正常化 */
+			/* 用陀螺仪修正 板子相对水平摆放的旋转(四元数表达) */
 			s_fQ0 = s_fQ0 + (-s_fQ1 * fGx - s_fQ2 * fGy - s_fQ3 * fGz) * HALF_T;
 			s_fQ1 = s_fQ1 + (s_fQ0 * fGx + s_fQ2 * fGz - s_fQ3 * fGy) * HALF_T;
 			s_fQ2 = s_fQ2 + (s_fQ0 * fGy - s_fQ1 * fGz + s_fQ3 * fGx) * HALF_T;
@@ -590,58 +459,21 @@ void UpdateIMU(void)
 			/* 计算四元数向量长度 */
 			fNorm = sqrtf(s_fQ0 * s_fQ0 + s_fQ1 * s_fQ1 + s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3);
 
-//			/* 计算角度 */
-//			float tx = -fAx;
-//			float ty = -fAy;
-//			float32 angle_deg;
-//			float tmag = sqrtf(tx*tx + ty*ty);
-//			if (tmag < 1e-3f) {
-//				// 返回上一次角度，或 0，或仅靠陀螺积分（见下节）
-//				// 这里先返回 0 作占位
-//				g_MsrRes.fPitch = 0.0f;
-//			} else {
-//				float32 angle_rad = atan2f(tx, ty);  // 注意参数顺序 (x, y)
-//				angle_deg = (angle_rad * (180.0f / (float)M_PI)) + 90.0f;
-//			}
-//			// 角度定义：相对 +Y 轴，正上为 0°
-//			static float32 fGyrIntegral = 0;
-//			fGyrIntegral += (fGz * 0.01f);
-//			angle_deg = (1.0f - 0.05f) * fGyrIntegral + 0.05f * angle_deg;
-//
-//			// 包到 [-180, 180]
-//			if (angle_deg > 180.0f) angle_deg -= 360.0f;
-//			if (angle_deg < -180.0f) angle_deg += 360.0f;
-//
-//			fGyrIntegral = angle_deg;
-//
-//			g_MsrRes.fPitch = angle_deg;
-
 			if(fNorm != 0) {
 				/* 归一化四元数 */
 				s_fQ0 = s_fQ0 / fNorm;
 				s_fQ1 = s_fQ1 / fNorm;
 				s_fQ2 = s_fQ2 / fNorm;
 				s_fQ3 = s_fQ3 / fNorm;
-				/* 驱动全局变量 */
-				g_MsrRes.iGyroX = g_Bmi270Comm.iGyrX;
-				g_MsrRes.iGyroY = g_Bmi270Comm.iGyrY;
-				g_MsrRes.iGyroZ = g_Bmi270Comm.iGyrZ;
-				g_MsrRes.iAccX = g_Bmi270Comm.iAccX;
-				g_MsrRes.iAccY = g_Bmi270Comm.iAccY;
-				g_MsrRes.iAccZ = g_Bmi270Comm.iAccZ;
 
-				g_MsrRes.fPitch  = -asinf(-2 * s_fQ1 * s_fQ3 + 2 * s_fQ0 * s_fQ2) * 57.3; /* pitch ,转换为度数 */
-//				g_MsrRes.fPitch = asinf(2 * (s_fQ1 * s_fQ3 - s_fQ0 * s_fQ2)) * 180.0f / M_PI;
-
+				g_MsrRes.fPitch = -asinf(-2 * s_fQ1 * s_fQ3 + 2 * s_fQ0 * s_fQ2) * 57.3; /* 由四元数计算Pitch ,转换为度数 */
+				g_MsrRes.fGyrZ = fGy;
 				/* 将擦窗机的方向扩为[-180, 180] 正左为正，正右为负 */
 				if(g_Bmi270Comm.iAccY > 0) {	/* 角度偏右 */
 					g_MsrRes.fPitch = -90 + g_MsrRes.fPitch;
 				} else {	/* 角度偏左 */
 					g_MsrRes.fPitch = 90 - g_MsrRes.fPitch;
 				}
-//				g_MsrRes.fRoll = atan2f(2 * s_fQ2 * s_fQ3 + 2 * s_fQ0 * s_fQ1, -2 * s_fQ1 * s_fQ1 - 2 * s_fQ2 * s_fQ2 + 1) * 57.3; /* roll */
-//				g_MsrRes.fRoll = atan2f(2 * (s_fQ2 * s_fQ3 + s_fQ0 * s_fQ1), 1 - 2 * (s_fQ1 * s_fQ1 + s_fQ2 * s_fQ2)) * 180.0f / M_PI;
-//				g_MsrRes.fYaw = atan2f(2 * (s_fQ1 * s_fQ2 + s_fQ0 * s_fQ3), 1 - 2 * (s_fQ2 * s_fQ2 + s_fQ3 * s_fQ3)) * 180.0f / M_PI;
 				g_MsrRes.u8TryCnt_IMU = 5;
 				return;
 			}
@@ -652,7 +484,6 @@ void UpdateIMU(void)
 		g_MsrRes.u8TryCnt_IMU--;
 	}
 }
-#endif
 
 #include "BMP280.h"		/* 气压 */
 /* 更新气压计 */
@@ -958,31 +789,6 @@ BOOL InitMp3Speaking(void)
 	g_Mp3.aUSongsRunningTime_s[10] = 2;
 	g_Mp3.aUSongsRunningTime_s[11] = 2;
 	g_Mp3.aUSongsRunningTime_s[12] = 2;
-
-
-//	/* 获取总曲目数(原本想动态计算每首歌的时长，但是通信一直有问题还是写死吧，毕竟歌也是死的.) */
-//	if(SendCmdToMp3(MP3_CMD_QUERY_SONGS_NUMBER, 0, aU8RecvBuff)) {
-//		uint16 uSongNbr = (aU8RecvBuff[0] << 8) | aU8RecvBuff[1];
-//		if(uSongNbr < VOICE_MAX_NO - 1) {	/* 歌曲数目不对，认为初始化失败 */
-//			return FALSE;
-//		}
-//		for(uint16 uIndex = 1; uIndex < VOICE_MAX_NO; uIndex++) {			/* 获取每首曲目的播放时长 */
-//			if(SendCmdToMp3(MP3_CMD_SELECT_SONG_PLAY, uIndex, NULL)) {		/* 先选择曲目播放 */
-//				Task_sleep(40);		/* 防止播放太频繁，mp3模块反应不过来 */
-////				SendCmdToMp3(MP3_CMD_STOP, 0, NULL);		/* 停止播放，由于程序运行的特别快，声音没有出来就已经停止了. */
-//				if(SendCmdToMp3(MP3_CMD_GET_RUNING_TIME, 0, aU8RecvBuff)) {	/* 获取播放时长 */
-//					g_Mp3.aUSongsRunningTime_s[uIndex] = aU8RecvBuff[0] * 60 * 60 + aU8RecvBuff[1] * 60 + aU8RecvBuff[2] + 1;
-//				} else {
-//					return FALSE;
-//				}
-//			} else {	/* 通信失败 */
-//				return FALSE;
-//			}
-//		}
-//	} else {
-//		return FALSE;
-//	}
-//	SendCmdToMp3(MP3_CMD_STOP, 0, NULL);		/* 停止播放，由于程序运行的特别快，升级没有出来就已经停止了. */
 	return TRUE;
 }
 /* =-==================新增MP3模块相关end================== */

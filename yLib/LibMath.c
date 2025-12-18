@@ -515,6 +515,161 @@ BOOL FilterUniRecU32Dat(u32DAT_UNI_REC* pDatRec, uint16 uBufLen, uint16 uCalStar
 }
 
 /*==========================================================================
+* fDAT_UNI_REC 结构数据处理
+\=========================================================================*/
+void InitfDatUniRec(fDAT_UNI_REC* pDatRec, uint16 uBufLen)
+{
+	pDatRec->uDatOKDecCnt = uBufLen;
+	pDatRec->uRecPt = 0;
+	pDatRec->fAvr = 0;
+	pDatRec->fRmsE = 0;
+}
+
+void UniRecfDatToBuf(fDAT_UNI_REC* pDatRec, uint16 uBufLen, float32 fData)
+{
+	uint16 uRecPt = pDatRec->uRecPt + 1;
+	if(uRecPt >= uBufLen) {
+		uRecPt = 0;
+	}
+
+	pDatRec->fDatBuf[uRecPt] = fData;
+	pDatRec->uRecPt = uRecPt;
+	if(pDatRec->uDatOKDecCnt) {
+		pDatRec->uDatOKDecCnt--;
+	}
+}
+
+/* 以水平线方式处理u32DAT_UNI_REC, 即认为斜率是0 */
+BOOL ProcUniRecfDatAsWave(fDAT_UNI_REC* pDatRec, uint16 uBufLen)
+{
+	uint16 uCalLen;
+	if(uBufLen <= pDatRec->uDatOKDecCnt) {
+		return FALSE;
+	} else {
+		uCalLen = uBufLen - pDatRec->uDatOKDecCnt;
+	}
+	
+	if((uCalLen > 255) || (uCalLen <= 2)) {
+		pDatRec->fAvr = pDatRec->fDatBuf[1];			/* 原来输出为0，容易出问题，改成第一个记录变量 */
+		pDatRec->fRmsE = 0;
+		return FALSE;
+	} else {
+		int16 i;					/* 内循环计数 */
+		uint16 uRecPt = pDatRec->uRecPt;				/* 计算开始数据指针 */
+		float32* pfData = &(pDatRec->fDatBuf[uRecPt]);	/* 计算数据指针 */
+		float64 f64Sum_D = 0;
+		float64 f64Sum_D2 = 0;
+		
+		if(uRecPt+1 >= uCalLen) {						/* C1情况 */
+			for(i = uCalLen-1; i >= 0; i--) {
+				f64Sum_D += (*pfData);
+				f64Sum_D2 += (*pfData) * (*pfData);
+				pfData--;
+			}
+		} else {										/* C2情况 */
+			/* Seg2段数据 */
+			for(i = uCalLen-1; i >= uCalLen - uRecPt - 1; i--) {
+				f64Sum_D += (*pfData);
+				f64Sum_D2 += (*pfData) * (*pfData);
+				pfData--;
+			}
+
+			/* Seg1段数据 */
+			pfData = &(pDatRec->fDatBuf[uBufLen-1]);
+			for( ; i >= 0; i--) {
+				f64Sum_D += (*pfData);
+				f64Sum_D2 += (*pfData) * (*pfData);
+				pfData--;
+			}
+		}
+
+		pDatRec->fAvr = f64Sum_D/uCalLen;
+		float64 f64Tmp = f64Sum_D2/(uCalLen-1) - pDatRec->fAvr*pDatRec->fAvr;
+		if(f64Tmp < 0) {
+			pDatRec->fRmsE = 0;
+		} else {
+			pDatRec->fRmsE = sqrtf(f64Tmp);
+		}
+	}
+	return TRUE;
+}
+
+/* 以斜线方式处理UniRecDat, 即最小二乘法做数据拟合，并求出方差、斜率 */
+float32 ProcUniRecfDatAsSlant(fDAT_UNI_REC* pDatRec, uint16 uBufLen)
+{
+	uint16 uCalLen;
+	if(uBufLen <= pDatRec->uDatOKDecCnt) {
+		uCalLen = 0;
+	} else {
+		uCalLen = uBufLen - pDatRec->uDatOKDecCnt;
+	}
+	
+	if((uCalLen > 255) || (uCalLen <= 2)) {
+		pDatRec->fAvr = pDatRec->fDatBuf[1];			/* 原来输出为0，容易出问题，改成第一个记录变量 */
+		pDatRec->fRmsE = 0;
+		return 0;
+	} else {
+		int16 i;					/* 内循环计数 */
+		uint16 uRecPt = pDatRec->uRecPt;				/* 计算开始数据指针 */
+		float32* pfData = &(pDatRec->fDatBuf[uRecPt]);	/* 计算数据指针 */
+		float64 f64Sum_D = 0;
+		float64 f64Sum_D2 = 0;
+		uint16 uSum_n = 0;
+		uint32 u32Sum_n2 = 0;
+		float64 f64Sum_Dn = 0;
+		
+		if(uRecPt+1 >= uCalLen) {						/* C1情况 */
+			for(i = uCalLen-1; i >= 0; i--) {
+				f64Sum_D += (*pfData);
+				f64Sum_D2 += (*pfData) * (*pfData);
+				uSum_n += i;
+				u32Sum_n2 += i*i;
+				f64Sum_Dn += (*pfData) * i;
+				pfData--;
+			}
+		} else {										/* C2情况 */
+			/* Seg2段数据 */
+			for(i = uCalLen-1; i >= uCalLen - uRecPt - 1; i--) {
+				f64Sum_D += (*pfData);
+				f64Sum_D2 += (*pfData) * (*pfData);
+				uSum_n += i;
+				u32Sum_n2 += i*i;
+				f64Sum_Dn += (*pfData) * i;
+				pfData--;
+			}
+
+			/* Seg1段数据 */
+			pfData = &(pDatRec->fDatBuf[uBufLen-1]);
+			for( ; i >= 0; i--) {
+				f64Sum_D += (*pfData);
+				f64Sum_D2 += (*pfData) * (*pfData);
+				uSum_n += i;
+				u32Sum_n2 += i*i;
+				f64Sum_Dn += (*pfData) * i;
+				pfData--;
+			}
+		}
+
+		pDatRec->fAvr = f64Sum_D/uCalLen;
+
+		float32 b = 0;
+		if(uCalLen >= uBufLen/2) {	/* 数据足够长，计算出来的b误差才较小 */
+			b = ((f64Sum_Dn*uCalLen) - (uSum_n*f64Sum_D))/((float64)u32Sum_n2*uCalLen - (float64)uSum_n*uSum_n);
+		}
+
+		float64 f64c = f64Sum_Dn*uCalLen - uSum_n*f64Sum_D;
+		f64c = (f64Sum_D2*uCalLen - f64Sum_D*f64Sum_D)/((uint32)uCalLen*uCalLen)
+			- f64c*f64c/(((uint64)u32Sum_n2*uCalLen - (uint32)uSum_n*uSum_n)*((uint32)uCalLen*uCalLen));
+		if(f64c < 0) {
+			pDatRec->fRmsE = 0;
+		} else {
+			pDatRec->fRmsE = sqrtf(f64c);
+		}
+		return b;
+	}
+}
+
+/*==========================================================================
 | Description	: PrintStringNoOvChk(): 把一个字符串填充到Buf里面，不带溢出检查
 				  PrintString(): 把一个字符串填充到Buf里面
 				  PrintTopicString(): 把一个字符串填充到TopicBuf里面，即要对中
